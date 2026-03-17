@@ -1,0 +1,9 @@
+{
+    "generator-water": {
+        "inner-project": true,
+        "project-type": "api",
+        "projectName": "WebSocket",
+        "projectGroupId": "it.water.websocket",
+        "projectVersion": "project.waterVersion"
+    }
+}
