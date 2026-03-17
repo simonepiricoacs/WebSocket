@@ -1,0 +1,23 @@
+dependencies {
+	//SLF4J
+    implementation group: 'org.slf4j', name: 'slf4j-api', version: project.slf4jVersion
+	//Atteo
+	implementation 'org.atteo.classindex:classindex:' + project.atteoClassIndexVersion
+	annotationProcessor('org.atteo.classindex:classindex:' + project.atteoClassIndexVersion)
+	//Water Core dependencies
+    implementation group: "it.water.core", name: "Core-api", version: project.waterVersion
+	implementation group: "it.water.core", name: "Core-interceptors", version: project.waterVersion
+	implementation group: "it.water.core", name: "Core-model", version: project.waterVersion
+	//Jetty WebSocket API
+	implementation group: 'org.eclipse.jetty.websocket', name: 'websocket-api', version: project.jettyVersion
+	//Jackson for JSON serialization
+	implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: project.jacksonVersion
+}
+
+publishing {
+    	publications {
+        	water(MavenPublication) {
+            	from components.java
+        }
+    }
+ }

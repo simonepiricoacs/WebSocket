@@ -1,0 +1,48 @@
+/*
+ * Copyright 2019-2023 HyperIoT
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package it.water.websocket.policy;
+
+import it.water.websocket.api.WebSocketPolicy;
+import org.eclipse.jetty.websocket.api.Session;
+
+import java.util.Map;
+import java.util.Objects;
+
+public abstract class WebSocketAbstractPolicy implements WebSocketPolicy {
+    private Session session;
+
+    public WebSocketAbstractPolicy(Session s) {
+        this.session = s;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        WebSocketAbstractPolicy that = (WebSocketAbstractPolicy) o;
+        return session.equals(that.session);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(session);
+    }
+
+    @Override
+    public abstract boolean isSatisfied(Map<String, Object> params, byte[] payload);
+}
