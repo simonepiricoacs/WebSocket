@@ -21,9 +21,6 @@ import org.eclipse.jetty.websocket.api.Session;
 
 import java.util.concurrent.Executor;
 
-/**
- * Author Aristide Cittadino
- */
 public interface WebSocketEndPoint {
     /**
      * @return Endpoint path

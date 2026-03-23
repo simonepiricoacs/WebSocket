@@ -20,17 +20,30 @@ package it.water.websocket.policy;
 import org.eclipse.jetty.websocket.api.Session;
 
 import java.util.Map;
+import java.util.Objects;
 
 public class MaxTextMessageSizePolicy extends WebSocketAbstractPolicy {
-    private int maxTextMessageSizePolicy;
+    private int maxTextMessageSize;
 
-    public MaxTextMessageSizePolicy(Session s, int maxTextMessageSizePolicy) {
+    public MaxTextMessageSizePolicy(Session s, int maxTextMessageSize) {
         super(s);
-        this.maxTextMessageSizePolicy = maxTextMessageSizePolicy;
+        this.maxTextMessageSize = maxTextMessageSize;
     }
 
     public int getMaxTextMessageSizePolicy() {
-        return maxTextMessageSizePolicy;
+        return maxTextMessageSize;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof MaxTextMessageSizePolicy that)) return false;
+        if (!super.equals(o)) return false;
+        return maxTextMessageSize == that.maxTextMessageSize;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), maxTextMessageSize);
     }
 
     @Override

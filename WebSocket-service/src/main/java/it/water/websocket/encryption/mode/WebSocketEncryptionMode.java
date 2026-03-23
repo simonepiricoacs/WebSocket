@@ -19,45 +19,38 @@ package it.water.websocket.encryption.mode;
 
 import org.eclipse.jetty.websocket.api.Session;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import java.io.UnsupportedEncodingException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 
 /**
- * @Author Aristide Cittadino
- * Abstract Class identifying an Encryption Mode.
+ * Interface identifying an Encryption Mode.
  */
-public abstract class WebSocketEncryptionMode {
+@SuppressWarnings("java:S112") // encryption SPI intentionally propagates generic crypto exceptions
+public interface WebSocketEncryptionMode {
     /**
      * Init method for intializing mode
      *
      * @param s
      */
-    public abstract void init(Session s);
+    void init(Session s);
 
     /**
      * Called on close
      *
      * @param s
      */
-    public abstract void dispose(Session s);
+    void dispose(Session s);
 
     /**
      * Method used to update mode (new keys received or change algorithm)
      *
      * @param params
      */
-    public abstract void update(Map<String, Object> params);
+    void update(Map<String, Object> params);
 
     /**
      * @return Current params of the encryption mode
      */
-    public abstract Map<String, Object> getParams();
+    Map<String, Object> getParams();
 
 
     /**
@@ -68,7 +61,7 @@ public abstract class WebSocketEncryptionMode {
      * @return
      * @throws Exception
      */
-    public abstract byte[] encrypt(byte[] plainText, boolean encodeBase64) throws Exception;
+    byte[] encrypt(byte[] plainText, boolean encodeBase64) throws Exception;
 
     /**
      * Decrypts content
@@ -77,5 +70,5 @@ public abstract class WebSocketEncryptionMode {
      * @return
      * @throws Exception
      */
-    public abstract byte[] decrypt(byte[] cipherText) throws Exception;
+    byte[] decrypt(byte[] cipherText) throws Exception;
 }

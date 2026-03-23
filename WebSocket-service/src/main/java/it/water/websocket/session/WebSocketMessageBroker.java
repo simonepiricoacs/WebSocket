@@ -27,6 +27,7 @@ import org.eclipse.jetty.websocket.api.WriteCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
@@ -35,11 +36,12 @@ import java.util.Map;
  * Component used to send messages over websocket.
  * This component allows to specify custom behaviour for communication as, for example, encryption or compression.
  */
+@SuppressWarnings("java:S112") // WebSocket I/O and encryption operations may throw various runtime exceptions; broad catch prevents connection teardown
 public class WebSocketMessageBroker {
 
-    private Logger log = LoggerFactory.getLogger("it.water.websocket");
+    private static final Logger log = LoggerFactory.getLogger(WebSocketMessageBroker.class);
     private Session session;
-    private static ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     private WebSocketEncryption encryptionPolicy;
     private WebSocketCompression compressionPolicy;
@@ -92,13 +94,13 @@ public class WebSocketMessageBroker {
      * @param message a String representing a WebSocketMessage
      * @return WebSocketMessage parsed from string
      */
+    @SuppressWarnings("java:S1168") // null signals a read failure to the caller; callers must handle null return
     public WebSocketMessage read(String message) {
         try {
-            byte[] tmpMessage = message.getBytes("UTF8");
+            byte[] tmpMessage = message.getBytes(StandardCharsets.UTF_8);
             tmpMessage = processMessageBeforeRead(tmpMessage, true);
-            String finalMessage = new String(tmpMessage);
-            WebSocketMessage m = WebSocketMessage.fromString(finalMessage);
-            return m;
+            String finalMessage = new String(tmpMessage, StandardCharsets.UTF_8);
+            return WebSocketMessage.fromString(finalMessage);
         } catch (Exception e) {
             log.warn(e.getMessage(), e);
         }
@@ -110,6 +112,7 @@ public class WebSocketMessageBroker {
      * @param decodeBase64BeforeDecrypt if the message is base64 encoded
      * @return bytes representing the original message in plain text (so it is eventually decrypted and decompressed)
      */
+    @SuppressWarnings("java:S1168") // null signals a read failure to the caller; callers must handle null return
     public byte[] readRaw(byte[] message, boolean decodeBase64BeforeDecrypt) {
         try {
             return processMessageBeforeRead(message, decodeBase64BeforeDecrypt);
@@ -125,6 +128,7 @@ public class WebSocketMessageBroker {
      * @param message Raw String message to eventually decrypt and decompress
      * @return bytes representing the original message in plain text (so it is eventually decrypted and decompressed)
      */
+    @SuppressWarnings("java:S1168") // null signals a read failure to the caller; callers must handle null return
     public byte[] readRaw(String message) {
         try {
             return this.readRaw(message, true);
@@ -141,9 +145,10 @@ public class WebSocketMessageBroker {
      * @param decodeBase64BeforeDecrypt if the message is base64 encoded and it must be decoded before processing it
      * @return bytes representing the original message in plain text (so it is eventually decrypted and decompressed)
      */
+    @SuppressWarnings("java:S1168") // null signals a read failure to the caller; callers must handle null return
     public byte[] readRaw(String message, boolean decodeBase64BeforeDecrypt) {
         try {
-            return this.readRaw(message.getBytes("UTF8"), decodeBase64BeforeDecrypt);
+            return this.readRaw(message.getBytes(StandardCharsets.UTF_8), decodeBase64BeforeDecrypt);
         } catch (Exception e) {
             log.warn(e.getMessage(), e);
         }
@@ -179,20 +184,24 @@ public class WebSocketMessageBroker {
      */
     public void sendAsync(WebSocketMessage message, boolean encodeBase64BeforeSend, WriteCallback writeCallback) {
         try {
-            this.sendAsync(mapper.writeValueAsString(message).getBytes("UTF8"), encodeBase64BeforeSend, writeCallback);
-        } catch (Throwable e) {
+            this.sendAsync(mapper.writeValueAsString(message).getBytes(StandardCharsets.UTF_8), encodeBase64BeforeSend, writeCallback);
+        } catch (Exception e) {
             log.error(e.getMessage(), e);
-            try {
-                WebSocketMessage m = new WebSocketMessage();
-                m.setType(WebSocketMessageType.ERROR);
-                if (e.getMessage() != null)
-                    m.setPayload(e.getMessage().getBytes());
-                m.setCmd("");
-                m.setTimestamp(new Date());
-                this.sendAsync((mapper.writeValueAsString(m)));
-            } catch (Throwable e1) {
-                log.error(e1.getMessage(), e1);
-            }
+            sendErrorMessage(e);
+        }
+    }
+
+    private void sendErrorMessage(Exception e) {
+        try {
+            WebSocketMessage m = new WebSocketMessage();
+            m.setType(WebSocketMessageType.ERROR);
+            if (e.getMessage() != null)
+                m.setPayload(e.getMessage().getBytes(StandardCharsets.UTF_8));
+            m.setCmd("");
+            m.setTimestamp(new Date());
+            this.sendAsync((mapper.writeValueAsString(m)));
+        } catch (Exception e1) {
+            log.error(e1.getMessage(), e1);
         }
     }
 
@@ -207,7 +216,7 @@ public class WebSocketMessageBroker {
     public void sendAsync(byte[] message, boolean encodeBase64, WriteCallback callback) {
         try {
             message = processMessageBeforeSend(message, encodeBase64);
-            String finalMessage = new String(message);
+            String finalMessage = new String(message, StandardCharsets.UTF_8);
             if (callback != null) {
                 session.getRemote().sendString(finalMessage, callback);
             } else {
@@ -235,7 +244,7 @@ public class WebSocketMessageBroker {
     public void sendAsync(String message, WriteCallback callback) {
         try {
             //Avoiding blocking I/O network traffic for multiple threads
-            this.sendAsync(message.getBytes("UTF8"), true, callback);
+            this.sendAsync(message.getBytes(StandardCharsets.UTF_8), true, callback);
         } catch (Exception e) {
             log.warn(e.getMessage(), e);
         }
@@ -245,9 +254,8 @@ public class WebSocketMessageBroker {
      * @param message data to send as a reason of websocket closing
      */
     public void closeSessionWithMessage(WebSocketMessage message) {
-        String messageStr = null;
         try {
-            messageStr = new String(processMessageBeforeSend(mapper.writeValueAsString(message).getBytes("UTF8"), false));
+            String messageStr = new String(processMessageBeforeSend(mapper.writeValueAsString(message).getBytes(StandardCharsets.UTF_8), false), StandardCharsets.UTF_8);
             this.session.close(500, messageStr);
         } catch (Exception e) {
             log.warn(e.getMessage(), e);
@@ -264,8 +272,9 @@ public class WebSocketMessageBroker {
     }
 
     /**
-     * @return
+     * @return encryption mode params, or null if no encryption is configured
      */
+    @SuppressWarnings("java:S1168") // null intentionally indicates no encryption is configured
     public Map<String, Object> getEncryptionPolicyParams() {
         if (this.encryptionPolicy != null)
             return this.encryptionPolicy.getModeParams();

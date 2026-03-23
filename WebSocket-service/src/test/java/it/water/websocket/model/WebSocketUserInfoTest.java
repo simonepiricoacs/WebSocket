@@ -32,13 +32,13 @@ class WebSocketUserInfoTest {
     @Test
     void notEqualToNull() {
         WebSocketUserInfo a = new WebSocketUserInfo("alice", null, "1.2.3.4");
-        assertNotEquals(a, null);
+        assertNotEquals( null, a);
     }
 
     @Test
     void notEqualToDifferentType() {
         WebSocketUserInfo a = new WebSocketUserInfo("alice", null, "1.2.3.4");
-        assertNotEquals(a, "alice");
+        assertNotEquals( "alice", a);
     }
 
     @Test

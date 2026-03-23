@@ -25,9 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Author Aristide Cittadino
- */
+
 public interface WebSocketSession {
 
     /**
@@ -81,8 +79,9 @@ public interface WebSocketSession {
     WebSocketUserInfo getUserInfo();
 
     /**
-     * @return Web Socket Policy Params to check
+     * @return Web Socket Policy Params to check, or null if no custom params are defined
      */
+    @SuppressWarnings("java:S1168") // null intentionally indicates no custom policy params; implementations may override to return an empty map
     default Map<String, Object> getPolicyParams() {
         return null;
     }

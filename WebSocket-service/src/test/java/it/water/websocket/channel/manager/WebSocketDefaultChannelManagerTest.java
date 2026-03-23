@@ -1,15 +1,19 @@
 package it.water.websocket.channel.manager;
 
 import it.water.core.model.exceptions.WaterRuntimeException;
-import it.water.websocket.api.channel.*;
+import it.water.websocket.api.WebSocketSession;
+import it.water.websocket.api.channel.WebSocketChannel;
+import it.water.websocket.api.channel.WebSocketChannelClusterCoordinator;
+import it.water.websocket.api.channel.WebSocketChannelClusterMessageBroker;
+import it.water.websocket.api.channel.WebSocketChannelSession;
 import it.water.websocket.channel.WebSocketBasicChannel;
 import it.water.websocket.channel.WebSocketChannelType;
+import it.water.websocket.channel.command.WebSocketChannelCommandType;
 import it.water.websocket.channel.role.WebSocketChannelOwnerRole;
 import it.water.websocket.channel.role.WebSocketChannelParticipantRole;
 import it.water.websocket.channel.util.WebSocketChannelConstants;
 import it.water.websocket.model.WebSocketUserInfo;
 import it.water.websocket.model.message.WebSocketMessage;
-import it.water.websocket.model.message.WebSocketMessageType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,14 +22,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@SuppressWarnings("java:S5778") // inline mock() calls are intentional for locally scoped test scenarios
 class WebSocketDefaultChannelManagerTest {
 
     @Mock
@@ -329,5 +335,121 @@ class WebSocketDefaultChannelManagerTest {
     @Test
     void getClusterBrokerReturnsConfiguredBroker() {
         assertEquals(broker, manager.getClusterBroker());
+    }
+
+    // --- deleteChannel ---
+
+    @Test
+    void deleteChannelWithPermissionNotifies() {
+        // Set up: channel mock that says user has permission
+        WebSocketChannel mockChannel = mock(WebSocketChannel.class);
+        WebSocketSession mockWebSocketSession = mock(WebSocketSession.class);
+        when(mockChannel.getChannelId()).thenReturn("ch-del");
+        when(mockChannel.userHasPermission(ownerInfo, WebSocketChannelCommandType.DELETE_CHANNEL)).thenReturn(true);
+        when(mockChannel.getPartecipantSession(ownerInfo)).thenReturn(mockWebSocketSession);
+        doNothing().when(mockWebSocketSession).sendRemote(any());
+        doNothing().when(coordinator).notifyChannelDeleted(anyString());
+
+        manager.onChannelAdded(mockChannel);
+        manager.deleteChannel(ownerInfo, mockChannel);
+
+        verify(coordinator).notifyChannelDeleted("ch-del");
+    }
+
+    @Test
+    void deleteChannelWithoutPermissionThrows() {
+        WebSocketChannel mockChannel = mock(WebSocketChannel.class);
+        when(mockChannel.userHasPermission(any(), any())).thenReturn(false);
+
+        assertThrows(WaterRuntimeException.class, () ->
+                manager.deleteChannel(ownerInfo, mockChannel));
+    }
+
+    @Test
+    void deleteChannelWithNullChannelThrows() {
+        assertThrows(WaterRuntimeException.class, () ->
+                manager.deleteChannel(ownerInfo, null));
+    }
+
+    // --- deliverMessage ---
+
+    @Test
+    void deliverMessageRoutesMessageToChannel() {
+        doNothing().when(coordinator).notifyChannelAdded(any(), any());
+        doNothing().when(coordinator).notifyPartecipantAdded(any(), any(), any());
+        doNothing().when(ownerSession).sendRemote(any());
+
+        manager.createChannel(
+                WebSocketChannelType.PLAIN.name(), "DeliverTest", "ch-deliver", 10,
+                new HashMap<>(), ownerSession, Collections.singleton(ownerRole)
+        );
+
+        WebSocketMessage msg = new WebSocketMessage();
+        HashMap<String, String> params = new HashMap<>();
+        params.put(WebSocketChannelConstants.CHANNEL_ID_PARAM, "ch-deliver");
+        params.put(WebSocketMessage.WS_MESSAGE_SENDER_PARAM_NAME, "owner");
+        msg.setParams(params);
+        msg.setCmd("READ_MESSAGE");
+
+        // Should not throw - channel exists
+        assertDoesNotThrow(() -> manager.deliverMessage(msg));
+    }
+
+    // --- kickParticipant happy path ---
+
+    @Test
+    void kickParticipantOnExistingChannelCallsKick() {
+        doNothing().when(coordinator).notifyChannelAdded(any(), any());
+        doNothing().when(coordinator).notifyPartecipantAdded(any(), any(), any());
+        doNothing().when(coordinator).notifyPartecipantGone(any(), any());
+        doNothing().when(ownerSession).sendRemote(any());
+        doNothing().when(participantSession).sendRemote(any());
+
+        manager.createChannel(
+                WebSocketChannelType.PLAIN.name(), "KickTest", "ch-kick", 10,
+                new HashMap<>(), ownerSession, Collections.singleton(ownerRole)
+        );
+        manager.joinChannel("ch-kick", participantSession, Collections.singleton(participantRole));
+
+        WebSocketMessage kickMsg = new WebSocketMessage();
+        HashMap<String, String> params = new HashMap<>();
+        params.put(WebSocketChannelConstants.CHANNEL_MESSAGE_PARAM_USER_TO_KICK, "participant");
+        params.put(WebSocketChannelConstants.CHANNEL_MESSAGE_PARAM_KICK_MESSAGE, "kicked");
+        kickMsg.setParams(params);
+
+        // Should not throw
+        assertDoesNotThrow(() -> manager.kickParticipant("ch-kick", ownerInfo, kickMsg));
+    }
+
+    // --- banParticipant happy path ---
+
+    @Test
+    void banParticipantOnExistingChannelCallsBan() {
+        doNothing().when(coordinator).notifyChannelAdded(any(), any());
+        doNothing().when(coordinator).notifyPartecipantAdded(any(), any(), any());
+        doNothing().when(ownerSession).sendRemote(any());
+
+        manager.createChannel(
+                WebSocketChannelType.PLAIN.name(), "BanTest", "ch-ban", 10,
+                new HashMap<>(), ownerSession, Collections.singleton(ownerRole)
+        );
+
+        WebSocketMessage banMsg = new WebSocketMessage();
+        HashMap<String, String> params = new HashMap<>();
+        params.put(WebSocketChannelConstants.CHANNEL_MESSAGE_PARAM_USER_TO_KICK, "someuser");
+        params.put(WebSocketChannelConstants.CHANNEL_MESSAGE_PARAM_KICK_MESSAGE, "banned");
+        banMsg.setParams(params);
+
+        assertDoesNotThrow(() -> manager.banParticipant("ch-ban", ownerInfo, banMsg));
+    }
+
+    @Test
+    void banParticipantThrowsWhenChannelNotFound() {
+        WebSocketMessage banMsg = new WebSocketMessage();
+        HashMap<String, String> params = new HashMap<>();
+        params.put(WebSocketChannelConstants.CHANNEL_MESSAGE_PARAM_USER_TO_KICK, "user");
+        banMsg.setParams(params);
+        assertThrows(WaterRuntimeException.class, () ->
+                manager.banParticipant("non-existent", ownerInfo, banMsg));
     }
 }

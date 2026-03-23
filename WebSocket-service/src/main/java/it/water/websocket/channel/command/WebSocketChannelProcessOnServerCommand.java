@@ -23,14 +23,11 @@ import it.water.websocket.api.channel.WebSocketChannelManager;
 import it.water.websocket.api.channel.WebSocketChannelSession;
 import it.water.websocket.channel.util.WebSocketChannelConstants;
 import it.water.websocket.model.message.WebSocketMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @FrameworkComponent(services = WebSocketChannelCommand.class, properties = {
         WebSocketChannelConstants.COMMAND_FILTER + "=" + WebSocketChannelCommandType.PROCESS_ON_SERVER_COMMAND
 })
 public class WebSocketChannelProcessOnServerCommand extends WebSocketChannelAbstractCommand implements WebSocketChannelCommand {
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelProcessOnServerCommand.class);
 
     @Override
     public void execute(WebSocketChannelSession userSession, WebSocketMessage message, String channelId, WebSocketChannelManager manager) {

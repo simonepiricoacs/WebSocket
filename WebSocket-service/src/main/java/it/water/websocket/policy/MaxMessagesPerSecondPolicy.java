@@ -18,24 +18,22 @@
 package it.water.websocket.policy;
 
 import org.eclipse.jetty.websocket.api.Session;
-
-import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.Objects;
+
 /**
- * @Author Aristide Cittadino
  * Max message per second Policy
  */
 public class MaxMessagesPerSecondPolicy extends WebSocketAbstractPolicy {
-    private static Logger log = LoggerFactory.getLogger(MaxMessagesPerSecondPolicy.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(MaxMessagesPerSecondPolicy.class);
 
     public static final long TIME_WINDOW_MS = 1000;
     private long startTimestamp = -1;
     private long count;
     private long maxMessagesPerSecond;
-    private Session session;
 
     public MaxMessagesPerSecondPolicy(Session s, long max) {
         super(s);
@@ -55,9 +53,7 @@ public class MaxMessagesPerSecondPolicy extends WebSocketAbstractPolicy {
         if (diff / TIME_WINDOW_MS <= 1) {
             count++;
             log.debug( "Policy Max Message Per Second:Time Window less than 1sec, counter is: {}", count);
-            if (count > maxMessagesPerSecond)
-                return false;
-            return true;
+            return count <= maxMessagesPerSecond;
         } else {
             log.debug( "Policy Max Message Per Second: resetting time winwdow");
             //resetting the time window
@@ -77,6 +73,18 @@ public class MaxMessagesPerSecondPolicy extends WebSocketAbstractPolicy {
 
     public long getMaxMessagesPerSecond() {
         return maxMessagesPerSecond;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!super.equals(o)) return false;
+        MaxMessagesPerSecondPolicy that = (MaxMessagesPerSecondPolicy) o;
+        return maxMessagesPerSecond == that.maxMessagesPerSecond;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), maxMessagesPerSecond);
     }
 
     @Override

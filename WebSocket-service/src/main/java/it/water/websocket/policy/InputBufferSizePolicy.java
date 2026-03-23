@@ -20,6 +20,7 @@ package it.water.websocket.policy;
 import org.eclipse.jetty.websocket.api.Session;
 
 import java.util.Map;
+import java.util.Objects;
 
 public class InputBufferSizePolicy extends WebSocketAbstractPolicy {
     private int inputBufferSize;
@@ -56,5 +57,17 @@ public class InputBufferSizePolicy extends WebSocketAbstractPolicy {
 
     public int getInputBufferSize() {
         return inputBufferSize;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!super.equals(o)) return false;
+        InputBufferSizePolicy that = (InputBufferSizePolicy) o;
+        return inputBufferSize == that.inputBufferSize;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), inputBufferSize);
     }
 }

@@ -17,21 +17,12 @@
 
 package it.water.websocket.api;
 
+@SuppressWarnings("java:S1192") // string literals duplicated in lambdas and public constants — forward reference restriction prevents using constants in enum initializers
 public enum WebSocketBasicCommandType implements WebSocketCommand {
 
-    READ_MESSAGE(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return READ_MESSAGE_COMMAND;
-        }
-    }),
+    READ_MESSAGE(() -> "READ_MESSAGE"),
 
-    SEND_MESSAGE(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return SEND_MESSAGE_COMMAND;
-        }
-    });
+    SEND_MESSAGE(() -> "SEND_MESSAGE");
 
     private WebSocketCommand cmd;
 

@@ -20,18 +20,13 @@ package it.water.websocket.channel.encryption;
 import it.water.websocket.api.channel.WebSocketChannelClusterMessageBroker;
 import it.water.websocket.api.channel.WebSocketChannelSession;
 import it.water.websocket.channel.WebSocketBasicChannel;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
-/**
- * @Author Aristide Cittadino
- */
-public abstract class WebSocketEncryptedBasicChannel extends WebSocketBasicChannel {
-    private static Logger log = LoggerFactory.getLogger(WebSocketEncryptedBasicChannel.class);
 
-    public WebSocketEncryptedBasicChannel(String channelName, String channelId, int maxPartecipants, Map<String, Object> channelParams, WebSocketChannelClusterMessageBroker clusterMessageBroker) {
+public abstract class WebSocketEncryptedBasicChannel extends WebSocketBasicChannel {
+
+    protected WebSocketEncryptedBasicChannel(String channelName, String channelId, int maxPartecipants, Map<String, Object> channelParams, WebSocketChannelClusterMessageBroker clusterMessageBroker) {
         super(channelName, channelId, maxPartecipants, channelParams, clusterMessageBroker);
         initChannelEncryption();
     }

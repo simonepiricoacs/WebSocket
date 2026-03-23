@@ -24,14 +24,11 @@ import it.water.websocket.api.channel.WebSocketChannelManager;
 import it.water.websocket.api.channel.WebSocketChannelRemoteCommand;
 import it.water.websocket.channel.util.WebSocketChannelConstants;
 import it.water.websocket.model.message.WebSocketMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @FrameworkComponent(services = {WebSocketChannelCommand.class, WebSocketChannelRemoteCommand.class}, properties = {
         WebSocketChannelConstants.COMMAND_FILTER + "=" + WebSocketBasicCommandType.READ_MESSAGE_COMMAND
 })
 public class WebSocketChannelReadMessageCommand extends WebSocketChannelAbstractCommand implements WebSocketChannelRemoteCommand {
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelReadMessageCommand.class);
 
     @Override
     public void execute(WebSocketMessage message, String channelId, WebSocketChannelManager channelManager) {

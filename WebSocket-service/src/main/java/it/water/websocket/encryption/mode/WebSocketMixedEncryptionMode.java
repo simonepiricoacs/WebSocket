@@ -17,17 +17,18 @@
 
 package it.water.websocket.encryption.mode;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 
 /**
- * @Author Aristide Cittadino
  * MixedEncryptionMode rappresents symmetric and asymmetric encryption methods combined.
  * In the first phase, client will exchange their symmetric password using an asymmetric encryption.
  * Then the communication will continuo with symmetric cryptography.
  */
-public abstract class WebSocketMixedEncryptionMode extends WebSocketEncryptionMode {
+@SuppressWarnings("java:S112") // encryption SPI intentionally propagates generic crypto exceptions
+public abstract class WebSocketMixedEncryptionMode implements WebSocketEncryptionMode {
     private PublicKey publicKey;
     private PrivateKey privateKey;
     private byte[] symmetricPassword;
@@ -100,7 +101,7 @@ public abstract class WebSocketMixedEncryptionMode extends WebSocketEncryptionMo
         if (this.symmetricPassword == null) {
             return encryptAsymmetric(this.publicKey, plainText, encodeBase64);
         } else {
-            return encryptSymmetric(symmetricPassword, symmetricIv, new String(plainText));
+            return encryptSymmetric(symmetricPassword, symmetricIv, new String(plainText, StandardCharsets.UTF_8));
         }
     }
 
@@ -130,7 +131,7 @@ public abstract class WebSocketMixedEncryptionMode extends WebSocketEncryptionMo
         if (this.symmetricPassword == null) {
             return decryptAsymmetric(this.privateKey, plainText);
         } else {
-            return decryptSymmetric(symmetricPassword, symmetricIv, new String(plainText));
+            return decryptSymmetric(symmetricPassword, symmetricIv, new String(plainText, StandardCharsets.UTF_8));
         }
     }
 

@@ -27,24 +27,25 @@ import org.eclipse.jetty.websocket.api.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public abstract class WebSocketChannelEncryptedSession extends WebSocketChannelBasicSession {
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelEncryptedSession.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketChannelEncryptedSession.class);
 
-    public WebSocketChannelEncryptedSession(Session session, boolean authenticationRequired, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
+    protected WebSocketChannelEncryptedSession(Session session, boolean authenticationRequired, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
         super(session, authenticationRequired, channelManager, componentRegistry);
     }
 
-    public WebSocketChannelEncryptedSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
+    protected WebSocketChannelEncryptedSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
         super(session, authenticated, encryptionPolicy, channelManager, componentRegistry);
     }
 
-    public WebSocketChannelEncryptedSession(Session session, boolean authenticated, WebSocketCompression compressionPolicy, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
+    protected WebSocketChannelEncryptedSession(Session session, boolean authenticated, WebSocketCompression compressionPolicy, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
         super(session, authenticated, compressionPolicy, channelManager, componentRegistry);
     }
 
-    public WebSocketChannelEncryptedSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, WebSocketCompression compressionPolicy, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
+    protected WebSocketChannelEncryptedSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, WebSocketCompression compressionPolicy, WebSocketChannelManager channelManager, ComponentRegistry componentRegistry) {
         super(session, authenticated, encryptionPolicy, compressionPolicy, channelManager, componentRegistry);
     }
 
@@ -53,12 +54,12 @@ public abstract class WebSocketChannelEncryptedSession extends WebSocketChannelB
         super.onConnect();
         try {
             String encryptionKeyMessageString = defineEncryptionMessage();
-            WebSocketMessage m = WebSocketMessage.createMessage(null, encryptionKeyMessageString.getBytes("UTF8"), WebSocketMessageType.SET_ENCRYPTION_KEY);
+            WebSocketMessage m = WebSocketMessage.createMessage(null, encryptionKeyMessageString.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.SET_ENCRYPTION_KEY);
             sendRemote(m);
             Map<String, Object> params = defineEncryptionPolicyParams();
             this.updateEncryptionPolicyParams(params);
         } catch (Exception e) {
-            log.error(e.getMessage());
+            log.error(e.getMessage(), e);
         }
     }
 

@@ -20,6 +20,7 @@ package it.water.websocket.policy;
 import org.eclipse.jetty.websocket.api.Session;
 
 import java.util.Map;
+import java.util.Objects;
 
 public class MaxBinaryMessageBufferSizePolicy extends WebSocketAbstractPolicy  {
     private int maxBinaryMessageBufferSize;
@@ -31,6 +32,18 @@ public class MaxBinaryMessageBufferSizePolicy extends WebSocketAbstractPolicy  {
 
     public int getMaxBinaryMessageBufferSize() {
         return maxBinaryMessageBufferSize;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!super.equals(o)) return false;
+        MaxBinaryMessageBufferSizePolicy that = (MaxBinaryMessageBufferSizePolicy) o;
+        return maxBinaryMessageBufferSize == that.maxBinaryMessageBufferSize;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), maxBinaryMessageBufferSize);
     }
 
     @Override

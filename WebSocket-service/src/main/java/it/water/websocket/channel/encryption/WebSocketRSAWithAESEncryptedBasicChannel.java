@@ -28,18 +28,15 @@ import it.water.websocket.model.message.WebSocketMessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 
 public class WebSocketRSAWithAESEncryptedBasicChannel extends WebSocketEncryptedBasicChannel {
-    private static Logger log = LoggerFactory.getLogger(WebSocketRSAWithAESEncryptedBasicChannel.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketRSAWithAESEncryptedBasicChannel.class);
 
-    private byte[] aesPwd;
-    private byte[] aesIv;
-    private String aesPwdStr;
-    private String aesIvStr;
-    private String aesInfoPayload;
-    private WebSocketMessage aesInfoMessage;
+    @SuppressWarnings("java:S1948") // aesInfoMessage is transient-equivalent: regenerated on channel creation and not needed after deserialization
+    private transient WebSocketMessage aesInfoMessage;
 
     public WebSocketRSAWithAESEncryptedBasicChannel(String channelName, String channelId, int maxPartecipants, Map<String, Object> channelParams, WebSocketChannelClusterMessageBroker clusterMessageBroker) {
         super(channelName, channelId, maxPartecipants, channelParams, clusterMessageBroker);
@@ -55,20 +52,19 @@ public class WebSocketRSAWithAESEncryptedBasicChannel extends WebSocketEncrypted
      * We create specific key for each channel
      */
     @Override
+    @SuppressWarnings("java:S2139") // exception is logged here and rethrown as WaterRuntimeException for caller context
     protected void initChannelEncryption() {
-        {
-            try {
-                EncryptionUtil encryptionUtil = (EncryptionUtil) ((ComponentRegistry) getChannelParam("componentRegistry")).findComponent(EncryptionUtil.class, null);
-                aesPwd = encryptionUtil.generateRandomAESPassword();
-                aesIv = encryptionUtil.generateRandomAESInitVector().getIV();
-                aesPwdStr = new String(Base64.getEncoder().encode(aesPwd));
-                aesIvStr = new String(Base64.getEncoder().encode(aesIv));
-                aesInfoPayload = aesPwdStr + WebSocketChannelConstants.WS_MESSAGE_CHANNEL_AES_DATA_SEPARATOR + aesIvStr;
-                aesInfoMessage = WebSocketMessage.createMessage(null, aesInfoPayload.getBytes("UTF8"), WebSocketMessageType.SET_CHANNEL_ENCRYPTION_KEY);
-            } catch (Throwable t) {
-                log.error(t.getMessage(), t);
-                throw new WaterRuntimeException("Impossible to create channel:" + t.getMessage());
-            }
+        try {
+            EncryptionUtil encryptionUtil = ((ComponentRegistry) getChannelParam("componentRegistry")).findComponent(EncryptionUtil.class, null);
+            byte[] aesPwd = encryptionUtil.generateRandomAESPassword();
+            byte[] aesIv = encryptionUtil.generateRandomAESInitVector().getIV();
+            String aesPwdStr = new String(Base64.getEncoder().encode(aesPwd), StandardCharsets.UTF_8);
+            String aesIvStr = new String(Base64.getEncoder().encode(aesIv), StandardCharsets.UTF_8);
+            String aesInfoPayload = aesPwdStr + WebSocketChannelConstants.WS_MESSAGE_CHANNEL_AES_DATA_SEPARATOR + aesIvStr;
+            aesInfoMessage = WebSocketMessage.createMessage(null, aesInfoPayload.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.SET_CHANNEL_ENCRYPTION_KEY);
+        } catch (Exception t) {
+            log.error(t.getMessage(), t);
+            throw new WaterRuntimeException("Impossible to create channel:" + t.getMessage(), t);
         }
     }
 

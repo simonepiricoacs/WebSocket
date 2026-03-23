@@ -28,13 +28,16 @@ import org.eclipse.jetty.websocket.api.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
+@SuppressWarnings("java:S2160") // params and componentRegistry are internal state
 public class WebSocketChannelRSAWithAESEncryptedSession extends WebSocketChannelEncryptedSession {
 
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelRSAWithAESEncryptedSession.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketChannelRSAWithAESEncryptedSession.class);
+    @SuppressWarnings("java:S1450") // params bridges defineEncryptionMessage() and defineEncryptionPolicyParams() called in sequence
     private Map<String, Object> params;
     private ComponentRegistry componentRegistry;
 
@@ -65,15 +68,15 @@ public class WebSocketChannelRSAWithAESEncryptedSession extends WebSocketChannel
             byte[] aesPwd = encryptionUtil.generateRandomAESPassword();
             byte[] aesIv = encryptionUtil.generateRandomAESInitVector().getIV();
             //sending <password:iv>
-            String aesPwdStr = new String(Base64.getEncoder().encode(aesPwd));
-            String aesIvStr = new String(Base64.getEncoder().encode(aesIv));
+            String aesPwdStr = new String(Base64.getEncoder().encode(aesPwd), StandardCharsets.UTF_8);
+            String aesIvStr = new String(Base64.getEncoder().encode(aesIv), StandardCharsets.UTF_8);
             String aesInfoPayload = aesPwdStr + WebSocketChannelConstants.WS_MESSAGE_CHANNEL_AES_DATA_SEPARATOR + aesIvStr;
             params = new HashMap<>();
             params.put(RSAWithAESEncryptionMode.MODE_PARAM_AES_PASSWORD, aesPwd);
             params.put(RSAWithAESEncryptionMode.MODE_PARAM_AES_IV, aesIv);
             return aesInfoPayload;
         } catch (Exception e) {
-            log.error(e.getMessage());
+            log.error(e.getMessage(), e);
         }
         return null;
     }

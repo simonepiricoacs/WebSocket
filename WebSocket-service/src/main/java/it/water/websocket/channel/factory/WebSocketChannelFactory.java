@@ -31,9 +31,13 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 
 public class WebSocketChannelFactory {
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelFactory.class);
+    private WebSocketChannelFactory() {
+        throw new UnsupportedOperationException();
+    }
 
-    private static ObjectMapper mapper = new ObjectMapper();
+    private static final Logger log = LoggerFactory.getLogger(WebSocketChannelFactory.class);
+
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     public static WebSocketChannel createChannelFromChannelType(String channelType, String channelId, String channelName, int maxPartecipants, Map<String, Object> params, WebSocketChannelClusterMessageBroker clusterMessageBroker) {
         WebSocketChannelType type = WebSocketChannelType.valueOf(channelType);
@@ -47,18 +51,18 @@ public class WebSocketChannelFactory {
         }
     }
 
-    public static <T extends WebSocketChannel> WebSocketChannel createChannelFromClass(Class<T> classType, String channelId, String channelName, int maxPartecipants, Map<String, Object> params, WebSocketChannelClusterMessageBroker clusterMessageBroker) throws InvocationTargetException, InstantiationException, IllegalAccessException {
+    public static WebSocketChannel createChannelFromClass(Class<? extends WebSocketChannel> classType, String channelId, String channelName, int maxPartecipants, Map<String, Object> params, WebSocketChannelClusterMessageBroker clusterMessageBroker) throws InvocationTargetException, InstantiationException, IllegalAccessException {
         return (WebSocketChannel) classType.getDeclaredConstructors()[0].newInstance(channelId, channelName, maxPartecipants, params, clusterMessageBroker);
     }
 
-    public static <T extends WebSocketChannel> WebSocketChannel createFromString(String channelJson, String classNameStr, WebSocketChannelClusterMessageBroker clusterMessageBroker) {
+    public static WebSocketChannel createFromString(String channelJson, String classNameStr, WebSocketChannelClusterMessageBroker clusterMessageBroker) {
         try {
             Class<? extends WebSocketChannel> channelClassType = (Class<? extends WebSocketChannel>) Class.forName(classNameStr);
             WebSocketChannel channel = mapper.readValue(channelJson, channelClassType);
             channel.defineClusterMessageBroker(clusterMessageBroker);
             return channel;
-        } catch (Throwable t) {
-            log.debug("Error while parsing websocket channel: {}", new Object[]{t.getMessage()});
+        } catch (Exception t) {
+            log.debug("Error while parsing websocket channel: {}", t.getMessage(), t);
         }
         return null;
     }

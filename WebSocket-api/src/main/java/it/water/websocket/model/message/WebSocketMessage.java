@@ -19,6 +19,7 @@ package it.water.websocket.model.message;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -26,22 +27,23 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WebSocketMessage {
     public static final String WS_MESSAGE_SENDER_PARAM_NAME = "sender";
 
     @JsonIgnore
-    private static Logger log = LoggerFactory.getLogger("it.water");
+    private static final Logger log = LoggerFactory.getLogger(WebSocketMessage.class);
     @JsonIgnore
-    private static ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     private String cmd;
     private byte[] payload;
     private String contentType;
     private Date timestamp;
     private WebSocketMessageType type;
-    private HashMap<String, String> params;
+    private Map<String, String> params;
 
     static {
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -52,11 +54,11 @@ public class WebSocketMessage {
         this.contentType = "text/plain";
     }
 
-    public HashMap<String, String> getParams() {
+    public Map<String, String> getParams() {
         return params;
     }
 
-    public void setParams(HashMap<String, String> params) {
+    public void setParams(Map<String, String> params) {
         this.params = params;
     }
 
@@ -110,10 +112,11 @@ public class WebSocketMessage {
     }
 
     public static WebSocketMessage fromString(String message) {
+        if (message == null) return null;
         try {
             return mapper.readValue(message, WebSocketMessage.class);
-        } catch (Throwable t) {
-            log.debug("Error while parsing websocket message: {}", new Object[]{t.getMessage()});
+        } catch (JsonProcessingException t) {
+            log.debug("Error while parsing websocket message: {}", t.getMessage(), t);
         }
         return null;
     }
@@ -121,7 +124,7 @@ public class WebSocketMessage {
     public String toJson() {
         try {
             return mapper.writeValueAsString(this);
-        } catch (Throwable t) {
+        } catch (JsonProcessingException t) {
             log.error(t.getMessage(), t);
         }
         return "{}";

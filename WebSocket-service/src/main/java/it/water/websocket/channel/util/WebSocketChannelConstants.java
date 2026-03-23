@@ -18,6 +18,10 @@
 package it.water.websocket.channel.util;
 
 public class WebSocketChannelConstants {
+    private WebSocketChannelConstants() {
+        throw new UnsupportedOperationException();
+    }
+
     public static final String COMMAND_FILTER = "it.water.websocket.channel.model.command";
     public static final String WS_MESSAGE_CHANNEL_AES_DATA_SEPARATOR = ":";
 
@@ -26,7 +30,7 @@ public class WebSocketChannelConstants {
     public static final String CHANNEL_MAX_PARTECIPANTS_PARAM = "maxPartecipants";
     public static final String CHANNEL_NAME_PARAM = "channelName";
 
-    public static final String CHANNEL_MAX_OWNERS_PARAM_ = "maxOwners";
+    public static final String CHANNEL_MAX_OWNERS_PARAM = "maxOwners";
     public static final String CHANNEL_MESSAGE_PARAM_USER_TO_KICK = "userIdToKick";
     public static final String CHANNEL_MESSAGE_PARAM_KICK_MESSAGE = "kickMessage";
 

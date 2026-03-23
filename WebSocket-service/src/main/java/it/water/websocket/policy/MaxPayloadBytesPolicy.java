@@ -18,14 +18,14 @@
 package it.water.websocket.policy;
 
 import org.eclipse.jetty.websocket.api.Session;
-
-import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.Objects;
+
 public class MaxPayloadBytesPolicy extends WebSocketAbstractPolicy {
-    private static Logger log = LoggerFactory.getLogger(MaxPayloadBytesPolicy.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(MaxPayloadBytesPolicy.class);
     private int maxPayloadBytes;
 
 
@@ -55,11 +55,20 @@ public class MaxPayloadBytesPolicy extends WebSocketAbstractPolicy {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof MaxPayloadBytesPolicy that)) return false;
+        if (!super.equals(o)) return false;
+        return maxPayloadBytes == that.maxPayloadBytes;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), maxPayloadBytes);
+    }
+
+    @Override
     public boolean isSatisfied(Map<String, Object> params, byte[] payload) {
-        log.debug( "Policy Max Payload bytes, current payload is: {}, max is {}", new Object[]{payload.length, maxPayloadBytes});
-        if (payload.length > maxPayloadBytes) {
-            return false;
-        }
-        return true;
+        log.debug("Policy Max Payload bytes, current payload is: {}, max is {}", payload.length, maxPayloadBytes);
+        return payload.length <= maxPayloadBytes;
     }
 }

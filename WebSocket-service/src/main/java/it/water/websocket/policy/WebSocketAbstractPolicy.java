@@ -26,15 +26,14 @@ import java.util.Objects;
 public abstract class WebSocketAbstractPolicy implements WebSocketPolicy {
     private Session session;
 
-    public WebSocketAbstractPolicy(Session s) {
+    protected WebSocketAbstractPolicy(Session s) {
         this.session = s;
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        WebSocketAbstractPolicy that = (WebSocketAbstractPolicy) o;
+        if (!(o instanceof WebSocketAbstractPolicy that)) return false;
         return session.equals(that.session);
     }
 

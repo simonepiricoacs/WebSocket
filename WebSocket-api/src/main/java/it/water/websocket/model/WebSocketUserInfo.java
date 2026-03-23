@@ -18,6 +18,7 @@
 package it.water.websocket.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.water.core.api.service.cluster.ClusterNodeInfo;
 import org.eclipse.jetty.websocket.api.Session;
@@ -29,13 +30,16 @@ import java.util.Objects;
 import java.util.UUID;
 
 public class WebSocketUserInfo implements Serializable {
-    @JsonIgnore
-    private static Logger log = LoggerFactory.getLogger(WebSocketUserInfo.class);
+    private static final long serialVersionUID = 1L;
 
     @JsonIgnore
-    private static ObjectMapper mapper = new ObjectMapper();
+    private static final Logger log = LoggerFactory.getLogger(WebSocketUserInfo.class);
+
+    @JsonIgnore
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     private String username;
+    @SuppressWarnings("java:S1948") // cluster metadata is carried by runtime implementations behind the interface
     private ClusterNodeInfo clusterNodeInfo;
 
     private String ipAddress;
@@ -77,8 +81,7 @@ public class WebSocketUserInfo implements Serializable {
 
     public static WebSocketUserInfo fromSession(String username, ClusterNodeInfo clusterNodeInfo, Session session) {
         String ipAddress = session.getRemote().getInetSocketAddress().getAddress().getHostAddress();
-        WebSocketUserInfo userInfo = new WebSocketUserInfo(username, clusterNodeInfo, ipAddress);
-        return userInfo;
+        return new WebSocketUserInfo(username, clusterNodeInfo, ipAddress);
     }
 
     public static WebSocketUserInfo fromSession(ClusterNodeInfo clusterNodeInfo, Session session) {
@@ -120,10 +123,11 @@ public class WebSocketUserInfo implements Serializable {
     }
 
     public static WebSocketUserInfo fromString(String message) {
+        if (message == null) return null;
         try {
             return mapper.readValue(message, WebSocketUserInfo.class);
-        } catch (Throwable t) {
-            log.debug("Error while parsing websocket user info: {}", new Object[]{t.getMessage()});
+        } catch (JsonProcessingException t) {
+            log.debug("Error while parsing websocket user info: {}", t.getMessage(), t);
         }
         return null;
     }
@@ -131,7 +135,7 @@ public class WebSocketUserInfo implements Serializable {
     public String toJson() {
         try {
             return mapper.writeValueAsString(this);
-        } catch (Throwable t) {
+        } catch (JsonProcessingException t) {
             log.error(t.getMessage(), t);
         }
         return "{}";

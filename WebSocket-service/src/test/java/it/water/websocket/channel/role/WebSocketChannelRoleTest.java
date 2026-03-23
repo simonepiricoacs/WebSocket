@@ -1,17 +1,47 @@
 package it.water.websocket.channel.role;
 
+import it.water.core.api.registry.ComponentRegistry;
+import it.water.core.api.registry.filter.ComponentFilter;
+import it.water.core.api.registry.filter.ComponentFilterBuilder;
+import it.water.core.model.exceptions.WaterRuntimeException;
 import it.water.websocket.api.WebSocketBasicCommandType;
 import it.water.websocket.api.WebSocketCommand;
 import it.water.websocket.api.channel.WebSocketChannelRole;
 import it.water.websocket.channel.command.WebSocketChannelCommandType;
 import it.water.websocket.channel.util.WebSocketChannelConstants;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class WebSocketChannelRoleTest {
+
+    @Mock
+    private ComponentRegistry mockRegistry;
+
+    @Mock
+    private ComponentFilterBuilder filterBuilder;
+
+    @Mock
+    private ComponentFilter filter;
+
+    @AfterEach
+    void tearDown() {
+        WebSocketChannelRoleManager.setComponentRegistry(null);
+    }
 
     // ===================== WebSocketChannelOwnerRole =====================
 
@@ -35,7 +65,7 @@ class WebSocketChannelRoleTest {
         assertTrue(cmds.contains(WebSocketChannelCommandType.KICK_USER));
         assertTrue(cmds.contains(WebSocketChannelCommandType.BAN_USER));
         assertTrue(cmds.contains(WebSocketChannelCommandType.UNBAN_USER));
-        assertTrue(cmds.contains(WebSocketChannelCommandType.DELETE_CHANNEl));
+        assertTrue(cmds.contains(WebSocketChannelCommandType.DELETE_CHANNEL));
         assertTrue(cmds.contains(WebSocketChannelCommandType.JOIN_CHANNEL));
         assertTrue(cmds.contains(WebSocketChannelCommandType.LEAVE_CHANNEL));
         assertTrue(cmds.contains(WebSocketChannelCommandType.SEND_MESSAGE_TO_SERVER));
@@ -73,7 +103,7 @@ class WebSocketChannelRoleTest {
         assertTrue(cmds.contains(WebSocketBasicCommandType.READ_MESSAGE));
         assertTrue(cmds.contains(WebSocketChannelCommandType.JOIN_CHANNEL));
         assertTrue(cmds.contains(WebSocketChannelCommandType.LEAVE_CHANNEL));
-        assertTrue(cmds.contains(WebSocketChannelCommandType.CREATE_CHANNEl));
+        assertTrue(cmds.contains(WebSocketChannelCommandType.CREATE_CHANNEL));
         assertTrue(cmds.contains(WebSocketChannelCommandType.SEND_PRIVATE_MESSAGE));
     }
 
@@ -84,7 +114,7 @@ class WebSocketChannelRoleTest {
 
         assertFalse(cmds.contains(WebSocketChannelCommandType.KICK_USER));
         assertFalse(cmds.contains(WebSocketChannelCommandType.BAN_USER));
-        assertFalse(cmds.contains(WebSocketChannelCommandType.DELETE_CHANNEl));
+        assertFalse(cmds.contains(WebSocketChannelCommandType.DELETE_CHANNEL));
     }
 
     // ===================== WebSocketChannelRoleManager =====================
@@ -111,6 +141,60 @@ class WebSocketChannelRoleTest {
         assertNotNull(csv);
         assertTrue(csv.contains(WebSocketChannelConstants.CHANNEL_ROLE_OWNER)
                 || csv.contains(WebSocketChannelConstants.CHANNEL_ROLE_PARTECIPANT));
+    }
+
+    @Test
+    void getWebSocketChannelRoleNullRegistryThrows() {
+        WebSocketChannelRoleManager.setComponentRegistry(null);
+        assertThrows(WaterRuntimeException.class, () ->
+                WebSocketChannelRoleManager.getWebSocketChannelRole("owner"));
+    }
+
+    @Test
+    void getWebSocketChannelRoleNotFoundThrows() {
+        WebSocketChannelRoleManager.setComponentRegistry(mockRegistry);
+        when(mockRegistry.getComponentFilterBuilder()).thenReturn(filterBuilder);
+        when(filterBuilder.createFilter(anyString(), anyString())).thenReturn(filter);
+        when(mockRegistry.findComponents(eq(WebSocketChannelRole.class), any())).thenReturn(Collections.emptyList());
+
+        assertThrows(WaterRuntimeException.class, () ->
+                WebSocketChannelRoleManager.getWebSocketChannelRole("nonexistent"));
+    }
+
+    @Test
+    void getWebSocketChannelRoleMultipleFoundThrows() {
+        WebSocketChannelOwnerRole r1 = new WebSocketChannelOwnerRole();
+        WebSocketChannelOwnerRole r2 = new WebSocketChannelOwnerRole();
+        WebSocketChannelRoleManager.setComponentRegistry(mockRegistry);
+        when(mockRegistry.getComponentFilterBuilder()).thenReturn(filterBuilder);
+        when(filterBuilder.createFilter(anyString(), anyString())).thenReturn(filter);
+        when(mockRegistry.findComponents(eq(WebSocketChannelRole.class), any())).thenReturn(List.of(r1, r2));
+
+        assertThrows(WaterRuntimeException.class, () ->
+                WebSocketChannelRoleManager.getWebSocketChannelRole("owner"));
+    }
+
+    @Test
+    void fromCommaSeparatedListReturnsRoleSet() {
+        WebSocketChannelOwnerRole owner = new WebSocketChannelOwnerRole();
+        WebSocketChannelRoleManager.setComponentRegistry(mockRegistry);
+        when(mockRegistry.getComponentFilterBuilder()).thenReturn(filterBuilder);
+        when(filterBuilder.createFilter(anyString(), anyString())).thenReturn(filter);
+        when(mockRegistry.findComponents(eq(WebSocketChannelRole.class), any())).thenReturn(List.of(owner));
+
+        Set<WebSocketChannelRole> roles = WebSocketChannelRoleManager.fromCommaSeparatedList(WebSocketChannelConstants.CHANNEL_ROLE_OWNER);
+        assertNotNull(roles);
+        assertTrue(roles.contains(owner));
+    }
+
+    @Test
+    void newRoleSetVarargs() {
+        WebSocketChannelOwnerRole owner = new WebSocketChannelOwnerRole();
+        WebSocketChannelParticipantRole participant = new WebSocketChannelParticipantRole();
+        Set<WebSocketChannelRole> roles = WebSocketChannelRoleManager.newRoleSet(owner, participant);
+        assertEquals(2, roles.size());
+        assertTrue(roles.contains(owner));
+        assertTrue(roles.contains(participant));
     }
 
     // ===================== WebSocketChannelType =====================

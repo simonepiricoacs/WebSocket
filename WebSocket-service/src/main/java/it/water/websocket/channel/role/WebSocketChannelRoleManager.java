@@ -24,13 +24,12 @@ import it.water.core.model.exceptions.WaterRuntimeException;
 import it.water.websocket.api.channel.WebSocketChannelRole;
 import it.water.websocket.channel.util.WebSocketChannelConstants;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class WebSocketChannelRoleManager {
+    private WebSocketChannelRoleManager() {
+        throw new UnsupportedOperationException();
+    }
 
     private static ComponentRegistry componentRegistry;
 
@@ -44,7 +43,7 @@ public class WebSocketChannelRoleManager {
 
     public static Set<WebSocketChannelRole> newRoleSet(Set<WebSocketChannelRole>... roleList) {
         Set<WebSocketChannelRole> mergedSet = new HashSet<>();
-        Arrays.asList(roleList).stream().forEach(roleSet -> mergedSet.addAll(roleSet));
+        Arrays.stream(roleList).forEach(mergedSet::addAll);
         return Collections.unmodifiableSet(mergedSet);
     }
 
@@ -67,9 +66,8 @@ public class WebSocketChannelRoleManager {
 
     public static String rolesAsCommaSeparatedList(Set<WebSocketChannelRole> roles) {
         StringBuilder sb = new StringBuilder();
-        roles.stream().forEach(role -> sb.append(role.getRoleName() + ","));
-        String commaSeparatedList = sb.substring(0, sb.length() - 1);
-        return commaSeparatedList;
+        roles.forEach(role -> sb.append(role.getRoleName()).append(","));
+        return sb.substring(0, sb.length() - 1);
     }
 
     public static Set<WebSocketChannelRole> fromCommaSeparatedList(String rolesCommaSeparatedList) {

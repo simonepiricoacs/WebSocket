@@ -35,7 +35,7 @@ import java.util.Map;
         WebSocketChannelConstants.COMMAND_FILTER + "=" + WebSocketChannelCommandType.CREATE_CHANNEL_COMMAND
 })
 public class WebSocketChannelCreateCommand extends WebSocketChannelAbstractCommand implements WebSocketChannelCommand {
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelCreateCommand.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketChannelCreateCommand.class);
 
     @Override
     public void execute(WebSocketChannelSession userSession, WebSocketMessage message, String channelId, WebSocketChannelManager channelManager) {

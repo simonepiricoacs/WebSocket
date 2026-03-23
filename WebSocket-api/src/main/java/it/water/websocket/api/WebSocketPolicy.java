@@ -20,7 +20,6 @@ package it.water.websocket.api;
 import java.util.Map;
 
 /**
- * Author Aristide Cittadino
  * Interface which maps the concept of WebSocket Policy in order to define rules in how the websocket should work.
  * Example policies are: max message per second, max message size, ecc...
  */

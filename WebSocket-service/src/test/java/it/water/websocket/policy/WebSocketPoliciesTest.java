@@ -12,6 +12,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("java:S3415") // assertion argument order is correct; SonarQube cannot infer expected/actual for computed values
 class WebSocketPoliciesTest {
 
     @Mock
@@ -76,6 +77,7 @@ class WebSocketPoliciesTest {
     }
 
     @Test
+    @SuppressWarnings("java:S2925") // Thread.sleep required to verify time-window reset in MaxMessagesPerSecondPolicy
     void maxMessagesPerSecondPolicyResetsAfterTimeWindow() throws InterruptedException {
         MaxMessagesPerSecondPolicy policy = new MaxMessagesPerSecondPolicy(session, 2);
         policy.isSatisfied(Collections.emptyMap(), new byte[0]); // init
@@ -169,9 +171,16 @@ class WebSocketPoliciesTest {
     @Test
     void abstractPolicyEqualityBasedOnSession() {
         MaxPayloadBytesPolicy p1 = new MaxPayloadBytesPolicy(session, 100);
-        MaxPayloadBytesPolicy p2 = new MaxPayloadBytesPolicy(session, 200);
-        assertEquals(p1, p2); // same session → equal
+        MaxPayloadBytesPolicy p2 = new MaxPayloadBytesPolicy(session, 100);
+        assertEquals(p1, p2); // same session + same field value → equal
         assertEquals(p1.hashCode(), p2.hashCode());
+    }
+
+    @Test
+    void abstractPolicyNotEqualWhenFieldDiffers() {
+        MaxPayloadBytesPolicy p1 = new MaxPayloadBytesPolicy(session, 100);
+        MaxPayloadBytesPolicy p2 = new MaxPayloadBytesPolicy(session, 200);
+        assertNotEquals(p1, p2); // same session but different maxPayloadBytes → not equal
     }
 
     @Test

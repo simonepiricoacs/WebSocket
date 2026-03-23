@@ -66,7 +66,8 @@ sonarqube {
 }
 
 task jacocoRootReport(type: JacocoReport) {
-    dependsOn subprojects.test
+    dependsOn subprojects.test, tasks.named("test")
+    mustRunAfter subprojects.jacocoTestReport
     additionalSourceDirs.setFrom(files(subprojects.sourceSets.main.allSource.srcDirs))
     classDirectories.setFrom(
             files(subprojects.collect { project ->

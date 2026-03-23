@@ -40,6 +40,7 @@ dependencies {
 	testImplementation 'org.mockito:mockito-junit-jupiter:4.6.1'
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:' + project.junitJupiterVersion
 	testImplementation 'org.junit.jupiter:junit-jupiter-engine:' + project.junitJupiterVersion
+	testImplementation 'org.junit.jupiter:junit-jupiter-params:' + project.junitJupiterVersion
 	testImplementation 'org.atteo.classindex:classindex:' + project.atteoClassIndexVersion
 }
 

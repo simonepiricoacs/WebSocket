@@ -28,6 +28,7 @@ import it.water.websocket.channel.util.WebSocketChannelConstants;
 import it.water.websocket.model.WebSocketUserInfo;
 import it.water.websocket.model.message.WebSocketMessage;
 import it.water.websocket.model.message.WebSocketMessageType;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,13 +37,16 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implements WebSocketChannelManager {
-    private static Logger log = LoggerFactory.getLogger(WebSocketDefaultChannelManager.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketDefaultChannelManager.class);
+    private static final String CHANNEL_NOT_FOUND = "Channel not found!";
+    private static final String CHANNEL_CANNOT_BE_NULL = "Channel cannot be null";
 
     private ConcurrentHashMap<String, WebSocketChannel> channels;
     private WebSocketChannelClusterCoordinator coordinator;
+    @Getter
     private WebSocketChannelClusterMessageBroker clusterBroker;
-    private Class<T> channelClass;
 
+    @SuppressWarnings("java:S1172") // channelClass provides the generic type binding T for the manager; required by WebSocketChannelManagerFactory.build()
     public WebSocketDefaultChannelManager(Class<T> channelClass, WebSocketChannelClusterCoordinator coordinator, WebSocketChannelClusterMessageBroker clusterBroker) {
         this.channels = new ConcurrentHashMap<>(1);
         //loading already create channels eventually on other cluster instances
@@ -51,11 +55,6 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
         if (this.clusterBroker != null)
             this.clusterBroker.registerChannelManager(this);
         this.channels.putAll(coordinator.connectNewPeer(this));
-        this.channelClass = channelClass;
-    }
-
-    public WebSocketChannelClusterMessageBroker getClusterBroker() {
-        return clusterBroker;
     }
 
     @Override
@@ -85,8 +84,8 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
             } else {
                 throw new WaterRuntimeException("Channel Already exists!");
             }
-        } catch (Throwable t) {
-            throw new WaterRuntimeException(t.getMessage());
+        } catch (Exception t) {
+            throw new WaterRuntimeException(t.getMessage(), t);
         }
     }
 
@@ -99,7 +98,7 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
             notifyPartecipantAdded(channel, partecipantSession, roles);
             return;
         }
-        throw new WaterRuntimeException("Channel not found!");
+        throw new WaterRuntimeException(CHANNEL_NOT_FOUND);
     }
 
     @Override
@@ -110,7 +109,7 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
             notifyPartecipantGone(channel, partecipantSession);
             return;
         }
-        throw new WaterRuntimeException("Channel not found!");
+        throw new WaterRuntimeException(CHANNEL_NOT_FOUND);
     }
 
     @Override
@@ -125,7 +124,7 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
                 this.coordinator.notifyPartecipantGone(channelId, toKick.get());
             return;
         }
-        throw new WaterRuntimeException("Channel not found!");
+        throw new WaterRuntimeException(CHANNEL_NOT_FOUND);
     }
 
     @Override
@@ -140,7 +139,7 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
                 this.coordinator.notifyPartecipantGone(channelId, toBan.get());
             return;
         }
-        throw new WaterRuntimeException("Channel not found!");
+        throw new WaterRuntimeException(CHANNEL_NOT_FOUND);
     }
 
     @Override
@@ -150,14 +149,14 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
             channel.unbanPartecipant(bannerInfo, unbanMessageCommand);
             return;
         }
-        throw new WaterRuntimeException("Channel not found!");
+        throw new WaterRuntimeException(CHANNEL_NOT_FOUND);
     }
 
     @Override
     public void deleteChannel(WebSocketUserInfo userInfo, WebSocketChannel toDeleteChannel) {
-        if (toDeleteChannel != null && toDeleteChannel.userHasPermission(userInfo, WebSocketChannelCommandType.DELETE_CHANNEl)) {
+        if (toDeleteChannel != null && toDeleteChannel.userHasPermission(userInfo, WebSocketChannelCommandType.DELETE_CHANNEL)) {
             WebSocketSession s = toDeleteChannel.getPartecipantSession(userInfo);
-            channels.remove(toDeleteChannel);
+            channels.remove(toDeleteChannel.getChannelId());
             coordinator.notifyChannelDeleted(toDeleteChannel.getChannelId());
             //only in this case channel manager sends message over sessions
             s.sendRemote(WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE_COMMAND, "CHANNEL_DELETED".getBytes(StandardCharsets.UTF_8), WebSocketMessageType.OK));
@@ -171,12 +170,12 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
         final String channelId = message.getParams().get(WebSocketChannelConstants.CHANNEL_ID_PARAM);
         final String sender = message.getParams().get(WebSocketMessage.WS_MESSAGE_SENDER_PARAM_NAME);
         WebSocketChannel channel = findChannel(channelId);
-        Optional<WebSocketUserInfo> senderInfo = channel.findUserInfo(sender);
         if (channel != null) {
+            Optional<WebSocketUserInfo> senderInfo = channel.findUserInfo(sender);
             if (message.getCmd().equals(WebSocketBasicCommandType.READ_MESSAGE_COMMAND))
                 channel.deliverMessage(senderInfo.orElse(null), message);
         } else {
-            log.error("Impossible to forward message to user from sender :" + sender + " and channel :" + channelId);
+            log.error("Impossible to forward message to user from sender: {} and channel: {}", sender, channelId);
         }
     }
 
@@ -206,23 +205,20 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
                 channel.addPartecipantInfo(partecipantInfo, roles);
             return;
         }
-        throw new WaterRuntimeException("Channel cannot be null");
+        throw new WaterRuntimeException(CHANNEL_CANNOT_BE_NULL);
     }
 
     @Override
     public void onPartecipantGone(String channelId, WebSocketUserInfo partecipantInfo) {
-        if (partecipantInfo.isOnLocalNode(null))
-            return;
-        WebSocketChannel channel = findChannel(channelId);
-        if (channel != null) {
-            channel.removePartecipant(partecipantInfo);
-            return;
-        }
-        throw new WaterRuntimeException("Channel cannot be null");
+        removeRemoteParticipant(channelId, partecipantInfo);
     }
 
     @Override
     public void onPartecipantDisconnected(String channelId, WebSocketUserInfo partecipantInfo) {
+        removeRemoteParticipant(channelId, partecipantInfo);
+    }
+
+    private void removeRemoteParticipant(String channelId, WebSocketUserInfo partecipantInfo) {
         if (partecipantInfo.isOnLocalNode(null))
             return;
         WebSocketChannel channel = findChannel(channelId);
@@ -230,7 +226,7 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
             channel.removePartecipant(partecipantInfo);
             return;
         }
-        throw new WaterRuntimeException("Channel cannot be null");
+        throw new WaterRuntimeException(CHANNEL_CANNOT_BE_NULL);
     }
 
     /**
@@ -256,9 +252,10 @@ public class WebSocketDefaultChannelManager<T extends WebSocketChannel> implemen
      * @param partecipantSession
      * @param roles
      */
+    @SuppressWarnings("java:S1172") // roles reserved for future use (channel creation permissions)
     private void notifyChannelCreated(WebSocketChannel channel, WebSocketChannelSession partecipantSession, Set<WebSocketChannelRole> roles) {
         //notify inside the cluster
-        coordinator.notifyChannelAdded(partecipantSession.getUserInfo().getClusterNodeInfo(),channel);
+        coordinator.notifyChannelAdded(partecipantSession.getUserInfo().getClusterNodeInfo(), channel);
     }
 
     /**

@@ -33,11 +33,11 @@ import java.util.Set;
 })
 public class WebSocketChannelParticipantRole implements WebSocketChannelRole {
 
-    private static Set<WebSocketCommand> allowedCmds;
+    private static final Set<WebSocketCommand> allowedCmds;
 
     static {
         Set<WebSocketCommand> commands = new HashSet<>();
-        commands.add(WebSocketChannelCommandType.CREATE_CHANNEl);
+        commands.add(WebSocketChannelCommandType.CREATE_CHANNEL);
         commands.add(WebSocketChannelCommandType.LEAVE_CHANNEL);
         commands.add(WebSocketChannelCommandType.JOIN_CHANNEL);
         commands.add(WebSocketChannelCommandType.SEND_PRIVATE_MESSAGE);

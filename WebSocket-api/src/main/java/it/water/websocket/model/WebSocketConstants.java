@@ -18,6 +18,10 @@
 package it.water.websocket.model;
 
 public class WebSocketConstants {
+    private WebSocketConstants() {
+        throw new UnsupportedOperationException();
+    }
+
     public static final String WEB_SOCKET_USERNAME_PARAM = "username";
     public static final String WEB_SOCKET_RECIPIENT_USER_PARAM = "recipient";
 

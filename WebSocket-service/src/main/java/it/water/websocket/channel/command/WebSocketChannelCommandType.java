@@ -24,80 +24,31 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
+@SuppressWarnings("java:S1192") // string literals duplicated in lambdas and public constants — forward reference restriction prevents using constants in enum initializers
 public enum WebSocketChannelCommandType implements WebSocketCommand {
 
     //command used to synchronize peer on events happening on each peer of the cluster
-    FOLLOW(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return FOLLOW_COMMAND;
-        }
-    }),
+    FOLLOW(() -> "FOLLOW"),
 
-    CREATE_CHANNEl(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return CREATE_CHANNEL_COMMAND;
-        }
-    }),
+    CREATE_CHANNEL(() -> "CREATE_CHANNEL"),
 
-    DELETE_CHANNEl(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return DELETE_CHANNEL_COMMAND;
-        }
-    }),
+    DELETE_CHANNEL(() -> "DELETE_CHANNEL"),
 
-    JOIN_CHANNEL(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return JOIN_CHANNEL_COMMAND;
-        }
-    }),
+    JOIN_CHANNEL(() -> "JOIN_CHANNEL"),
 
-    LEAVE_CHANNEL(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return LEAVE_CHANNEL_COMMAND;
-        }
-    }),
+    LEAVE_CHANNEL(() -> "LEAVE_CHANNEL"),
 
-    BAN_USER(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return BAN_USER_COMMAND;
-        }
-    }),
+    BAN_USER(() -> "BAN_USER"),
 
-    UNBAN_USER(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return UNBAN_USER_COMMAND;
-        }
-    }),
+    UNBAN_USER(() -> "UNBAN_USER"),
 
-    KICK_USER(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return KICK_USER_COMMAND;
-        }
-    }),
+    KICK_USER(() -> "KICK_USER"),
 
-    SEND_PRIVATE_MESSAGE(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return SEND_PRIVATE_MESSAGE_COMMAND;
-        }
-    }),
+    SEND_PRIVATE_MESSAGE(() -> "SEND_PRIVATE_MESSAGE"),
 
-    SEND_MESSAGE_TO_SERVER(new WebSocketCommand() {
-        @Override
-        public String getCommandName() {
-            return PROCESS_ON_SERVER_COMMAND;
-        }
-    });
+    SEND_MESSAGE_TO_SERVER(() -> "PROCESS_ON_SERVER");
 
-    public static Set<WebSocketCommand> allCmds;
+    public static final Set<WebSocketCommand> ALL_CMDS;
 
     public static final String FOLLOW_COMMAND = "FOLLOW";
     public static final String BAN_USER_COMMAND = "BAN_USER";
@@ -113,8 +64,8 @@ public enum WebSocketChannelCommandType implements WebSocketCommand {
     static {
         Set<WebSocketCommand> commands = new HashSet<>();
         commands.add(WebSocketChannelCommandType.FOLLOW);
-        commands.add(WebSocketChannelCommandType.CREATE_CHANNEl);
-        commands.add(WebSocketChannelCommandType.DELETE_CHANNEl);
+        commands.add(WebSocketChannelCommandType.CREATE_CHANNEL);
+        commands.add(WebSocketChannelCommandType.DELETE_CHANNEL);
         commands.add(WebSocketChannelCommandType.JOIN_CHANNEL);
         commands.add(WebSocketChannelCommandType.LEAVE_CHANNEL);
         commands.add(WebSocketChannelCommandType.SEND_PRIVATE_MESSAGE);
@@ -124,7 +75,7 @@ public enum WebSocketChannelCommandType implements WebSocketCommand {
         commands.add(WebSocketChannelCommandType.SEND_MESSAGE_TO_SERVER);
         commands.add(WebSocketBasicCommandType.SEND_MESSAGE);
         commands.add(WebSocketBasicCommandType.READ_MESSAGE);
-        allCmds = Collections.unmodifiableSet(commands);
+        ALL_CMDS = Collections.unmodifiableSet(commands);
     }
 
     private WebSocketCommand cmd;

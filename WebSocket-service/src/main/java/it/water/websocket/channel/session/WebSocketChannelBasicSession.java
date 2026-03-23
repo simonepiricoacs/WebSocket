@@ -38,11 +38,9 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/**
- * @Author Aristide Cittadino
- */
+
 public class WebSocketChannelBasicSession extends WebSocketAbstractSession implements WebSocketChannelSession {
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelBasicSession.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketChannelBasicSession.class);
 
     private WebSocketChannelManager channelManager;
     private WebSocketChannelCommandFactory commandFactory;
@@ -116,7 +114,7 @@ public class WebSocketChannelBasicSession extends WebSocketAbstractSession imple
     }
 
     public void processMessage(byte[] rawMessage) {
-        String rawMessageStr = new String(rawMessage);
+        String rawMessageStr = new String(rawMessage, StandardCharsets.UTF_8);
         WebSocketMessage wsMessage = WebSocketMessage.fromString(rawMessageStr);
 
         if (wsMessage == null) {
@@ -137,7 +135,7 @@ public class WebSocketChannelBasicSession extends WebSocketAbstractSession imple
         WebSocketChannelCommand command = commandFactory.createCommand(wsMessage.getCmd());
         try {
             command.execute(this, wsMessage, channelId, this.channelManager);
-        } catch (Throwable t) {
+        } catch (Exception t) {
             log.error(t.getMessage(), t);
             String errorMessageStr = (t.getMessage() != null) ? t.getMessage() : "";
             WebSocketMessage errorMessage = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE_COMMAND, errorMessageStr.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.ERROR);
@@ -147,7 +145,7 @@ public class WebSocketChannelBasicSession extends WebSocketAbstractSession imple
 
     @Override
     public void dispose() {
-        WebSocketMessage m = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE.toString(), "Disconnecting...".getBytes(), WebSocketMessageType.DISCONNECTING);
+        WebSocketMessage m = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE.toString(), "Disconnecting...".getBytes(StandardCharsets.UTF_8), WebSocketMessageType.DISCONNECTING);
         this.sendRemote(m);
         this.getMessageBroker().onCloseSession(this.getSession());
         super.dispose();
@@ -157,7 +155,7 @@ public class WebSocketChannelBasicSession extends WebSocketAbstractSession imple
     public void close(String closeMessage) {
         if (closeMessage == null)
             closeMessage = "";
-        WebSocketMessage m = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE.toString(), closeMessage.getBytes(), WebSocketMessageType.ERROR);
+        WebSocketMessage m = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE.toString(), closeMessage.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.ERROR);
         this.sendRemote(m);
         //forcing to close connection
         log.info("Closing session because: {}", closeMessage);
@@ -172,6 +170,7 @@ public class WebSocketChannelBasicSession extends WebSocketAbstractSession imple
         this.joinedChannels.remove(channel);
     }
 
+    @SuppressWarnings("java:S1172") // parameter is part of the public interface contract
     public void emptyJoinedChannels(WebSocketChannel channel) {
         this.joinedChannels.clear();
     }
@@ -183,8 +182,8 @@ public class WebSocketChannelBasicSession extends WebSocketAbstractSession imple
     protected void sendConnectionOkMessage(String message) {
         if (message == null)
             message = "";
-        WebSocketMessage m = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE.toString(), message.getBytes(), WebSocketMessageType.CONNECTION_OK);
-        HashMap<String, String> params = new HashMap<>();
+        WebSocketMessage m = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE.toString(), message.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.CONNECTION_OK);
+        Map<String, String> params = new HashMap<>();
         params.put(WebSocketConstants.WEB_SOCKET_USERNAME_PARAM, this.getUserInfo().getUsername());
         m.setParams(params);
         this.sendRemote(m);
@@ -195,10 +194,10 @@ public class WebSocketChannelBasicSession extends WebSocketAbstractSession imple
     }
 
     protected void onClose() {
-        this.joinedChannels.parallelStream().forEach(channel -> {
-            this.channelManager.leaveChannel(channel.getChannelId(), this);
-        });
-        WebSocketMessage m = WebSocketMessage.createMessage(null, "partecipant is disconnecting...".getBytes(), WebSocketMessageType.PARTICIPANT_GONE);
+        this.joinedChannels.parallelStream().forEach(channel ->
+            this.channelManager.leaveChannel(channel.getChannelId(), this)
+        );
+        WebSocketMessage m = WebSocketMessage.createMessage(null, "partecipant is disconnecting...".getBytes(StandardCharsets.UTF_8), WebSocketMessageType.PARTICIPANT_GONE);
         this.sendRemote(m);
     }
 

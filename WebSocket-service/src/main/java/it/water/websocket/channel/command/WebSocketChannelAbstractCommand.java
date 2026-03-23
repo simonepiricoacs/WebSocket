@@ -27,14 +27,14 @@ import java.util.Arrays;
 
 public abstract class WebSocketChannelAbstractCommand implements WebSocketChannelCommand {
 
-    void checkRequiredParameters(WebSocketMessage message, String... paramsNames) {
-        Arrays.asList(paramsNames).stream().forEach(paramName -> {
+    protected void checkRequiredParameters(WebSocketMessage message, String... paramsNames) {
+        Arrays.stream(paramsNames).forEach(paramName -> {
             if (!message.getParams().containsKey(paramName) || message.getParams().get(paramName) == null)
                 throw new WaterRuntimeException("Param name: " + paramName + " is required!");
         });
     }
 
-    WebSocketChannel findChannelOrDie(String channelId, WebSocketChannelManager channelManager) {
+    protected WebSocketChannel findChannelOrDie(String channelId, WebSocketChannelManager channelManager) {
         WebSocketChannel channel = channelManager.findChannel(channelId);
         if (channel == null)
             throw new WaterRuntimeException("Channel " + channelId + " not found!");

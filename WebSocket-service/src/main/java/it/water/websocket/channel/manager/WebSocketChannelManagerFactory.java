@@ -32,7 +32,6 @@ import java.util.List;
 public class WebSocketChannelManagerFactory {
     private WebSocketChannelClusterCoordinator coordinator;
     private WebSocketChannelClusterMessageBroker messageBroker;
-    private Object channelType;
 
     public WebSocketChannelManagerFactory withClusterCoordinator(WebSocketChannelClusterCoordinator coordinator) {
         this.coordinator = coordinator;
@@ -68,8 +67,7 @@ public class WebSocketChannelManagerFactory {
     public <T extends WebSocketChannel> WebSocketChannelManager build(Class<T> channelType) {
         if (channelType == null)
             throw new WaterRuntimeException("Channel Manager must be set with a channel type, please use withChannelType method");
-        WebSocketChannelManager manager = new WebSocketDefaultChannelManager(channelType, this.coordinator, this.messageBroker);
-        return manager;
+        return new WebSocketDefaultChannelManager<>(channelType, this.coordinator, this.messageBroker);
     }
 
     public void reset() {

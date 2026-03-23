@@ -21,17 +21,18 @@ package it.water.websocket.encryption;
 import it.water.websocket.encryption.mode.RSAWithAESEncryptionMode;
 
 /**
- * @Author Aristide Cittadino
  * Factory for creating alla available Encryption Policies for websockets
  */
 public class WebSocketEncryptionFactory {
+    private WebSocketEncryptionFactory() {
+        throw new UnsupportedOperationException();
+    }
 
     /**
      * @return
      */
     public static WebSocketEncryption createRSAAndAESEncryptionPolicy() {
         RSAWithAESEncryptionMode rsaAndAesMode = new RSAWithAESEncryptionMode();
-        WebSocketEncryption rsaAndAes = new WebSocketEncryption(rsaAndAesMode);
-        return rsaAndAes;
+        return new WebSocketEncryption(rsaAndAesMode);
     }
 }

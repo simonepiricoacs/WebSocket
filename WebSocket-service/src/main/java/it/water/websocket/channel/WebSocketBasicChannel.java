@@ -42,13 +42,14 @@ import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/**
- * @Author Aristide Cittadino
- */
+
 @JsonIgnoreProperties(ignoreUnknown = true)
+@SuppressWarnings("java:S1948") // channel collaborators are restored at runtime after deserialization
 public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
+    private static final long serialVersionUID = 1L;
+
     @JsonIgnore
-    private static Logger log = LoggerFactory.getLogger(WebSocketBasicChannel.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketBasicChannel.class);
 
     private String channelId;
     private String channelName;
@@ -56,7 +57,7 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
 
     private Map<String, Object> channelParams;
 
-    private static ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     //All session across the eventual cluster
     @JsonIgnore
@@ -172,7 +173,7 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
             //send command to other nodes in order to allign their state
             this.clusterMessageBroker.sendMessage(channelId, kickMessageCommand);
         }
-        if (!toKick.isPresent()) {
+        if (toKick.isEmpty()) {
             sendKOMessage(this.partecipantsSessions.get(kickerInfo), "User not found in channel!");
             return;
         }
@@ -183,7 +184,7 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
             removePartecipant(toKick.get());
             //notify all local channel participant user has been kicked
             String kickMessageStr = (kickMessageCommand.getParams() != null && kickMessageCommand.getParams().containsKey(WebSocketChannelConstants.CHANNEL_MESSAGE_PARAM_KICK_MESSAGE)) ? kickMessageCommand.getParams().get(WebSocketChannelConstants.CHANNEL_MESSAGE_PARAM_KICK_MESSAGE) : "";
-            WebSocketMessage kickMessageNotification = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE_COMMAND, kickMessageStr.getBytes(), WebSocketMessageType.PARTICIPANT_KICKED);
+            WebSocketMessage kickMessageNotification = WebSocketMessage.createMessage(WebSocketBasicCommandType.READ_MESSAGE_COMMAND, kickMessageStr.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.PARTICIPANT_KICKED);
             //copying params from original message sender,kicker,channel
             kickMessageNotification.setParams(kickMessageCommand.getParams());
             //deliver kick message notification on the local node session
@@ -260,7 +261,7 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
 
     public Set<ClusterNodeInfo> getPeers() {
         Set<ClusterNodeInfo> nodeList = new HashSet<>();
-        partecipantsInfo.keySet().stream().forEach(userInfo -> {
+        partecipantsInfo.keySet().forEach(userInfo -> {
             if (!userInfo.isOnLocalNode(null)) {
                 nodeList.add(userInfo.getClusterNodeInfo());
             }
@@ -281,7 +282,7 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
         try {
             this.clusterMessageBroker.sendMessage(channelId, message);
         } catch (Exception e) {
-            log.error(e.getMessage());
+            log.error(e.getMessage(), e);
         }
     }
 
@@ -332,7 +333,7 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
                     WebSocketChannelSession session = this.partecipantsSessions.get(userInfo);
                     session.sendRemote(message);
                 }
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 log.error(e.getMessage(), e);
             }
         });
@@ -344,17 +345,18 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
             String serverResponse = processMessageOnServer(senderSession, message);
             //getting server response, send back to the client
             if (serverResponse != null) {
-                WebSocketMessage responseMessage = WebSocketMessage.createMessage(null, serverResponse.getBytes("UTF8"), WebSocketMessageType.RESULT);
+                WebSocketMessage responseMessage = WebSocketMessage.createMessage(null, serverResponse.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.RESULT);
                 senderSession.sendRemote(responseMessage);
             }
         } catch (Exception e) {
             log.error(e.getMessage(), e);
             //sending back to the client the error message
-            WebSocketMessage errMessage = WebSocketMessage.createMessage(null, e.getMessage().getBytes(), WebSocketMessageType.ERROR);
+            WebSocketMessage errMessage = WebSocketMessage.createMessage(null, e.getMessage().getBytes(StandardCharsets.UTF_8), WebSocketMessageType.ERROR);
             senderSession.sendRemote(errMessage);
         }
     }
 
+    @SuppressWarnings({"java:S1172", "java:S3400"}) // parameters and return value are part of the overridable extension point
     protected String processMessageOnServer(WebSocketChannelSession senderSession, WebSocketMessage message) {
         //Method can be overridden in order to develop custom server logic
         return "";
@@ -363,16 +365,15 @@ public class WebSocketBasicChannel implements WebSocketChannel, Serializable {
     public String toJson() {
         try {
             return mapper.writeValueAsString(this);
-        } catch (Throwable t) {
+        } catch (Exception t) {
             log.error(t.getMessage(), t);
         }
         return "{}";
     }
 
     public boolean userHasPermission(WebSocketUserInfo user, WebSocketCommand commandType) {
-        if (partecipantsInfo.get(user) != null)
-            return partecipantsInfo.get(user).stream().filter(role -> role.getAllowedCmds().contains(commandType)).findAny().isPresent();
-        return false;
+        Set<WebSocketChannelRole> roles = partecipantsInfo.get(user);
+        return roles != null && roles.stream().anyMatch(role -> role.getAllowedCmds().contains(commandType));
     }
 
     private void checkPartecipantsLimits() {

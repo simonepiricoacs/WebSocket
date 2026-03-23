@@ -32,19 +32,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.HttpCookie;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Author Generoso Martello
  * This class implements the concept of a Web Socket Session
  */
+@SuppressWarnings("java:S112") // WebSocket session handlers must catch broad exceptions to prevent leaving connections in undefined state
 public abstract class WebSocketAbstractSession implements WebSocketSession {
-    private static Logger log = LoggerFactory.getLogger(WebSocketAbstractSession.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketAbstractSession.class);
 
     private Session session;
     private Set<Principal> principals;
@@ -61,7 +61,7 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
      * @param authenticationRequired
      * @param componentRegistry
      */
-    public WebSocketAbstractSession(Session session, boolean authenticationRequired, ComponentRegistry componentRegistry) {
+    protected WebSocketAbstractSession(Session session, boolean authenticationRequired, ComponentRegistry componentRegistry) {
         log.debug("Creating websocket session....");
         this.session = session;
         this.componentRegistry = componentRegistry;
@@ -75,7 +75,7 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
      * @param encryptionPolicy
      * @param componentRegistry
      */
-    public WebSocketAbstractSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, ComponentRegistry componentRegistry) {
+    protected WebSocketAbstractSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, ComponentRegistry componentRegistry) {
         this(session, authenticated, componentRegistry);
         initMessageBroker(session, encryptionPolicy, null);
     }
@@ -86,7 +86,7 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
      * @param compressionPolicy
      * @param componentRegistry
      */
-    public WebSocketAbstractSession(Session session, boolean authenticated, WebSocketCompression compressionPolicy, ComponentRegistry componentRegistry) {
+    protected WebSocketAbstractSession(Session session, boolean authenticated, WebSocketCompression compressionPolicy, ComponentRegistry componentRegistry) {
         this(session, authenticated, componentRegistry);
         initMessageBroker(session, null, compressionPolicy);
     }
@@ -98,7 +98,7 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
      * @param compressionPolicy
      * @param componentRegistry
      */
-    public WebSocketAbstractSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, WebSocketCompression compressionPolicy, ComponentRegistry componentRegistry) {
+    protected WebSocketAbstractSession(Session session, boolean authenticated, WebSocketEncryption encryptionPolicy, WebSocketCompression compressionPolicy, ComponentRegistry componentRegistry) {
         this(session, authenticated, componentRegistry);
         initMessageBroker(session, encryptionPolicy, compressionPolicy);
     }
@@ -157,7 +157,7 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
         this.getMessageBroker().onCloseSession(this.getSession());
         try {
             session.close();
-        } catch (Throwable t) {
+        } catch (Exception t) {
             log.error(t.getMessage(), t);
         }
     }
@@ -226,14 +226,14 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
      * @param callback
      */
     public void sendRemote(String message, boolean encodeBase64, WriteCallback callback) {
-        this.messageBroker.sendAsync(message.getBytes(), encodeBase64, callback);
+        this.messageBroker.sendAsync(message.getBytes(StandardCharsets.UTF_8), encodeBase64, callback);
     }
 
     /**
      * @param message
      */
     public void sendRemote(String message, boolean encodeBase64) {
-        this.messageBroker.sendAsync(message.getBytes(), encodeBase64, null);
+        this.messageBroker.sendAsync(message.getBytes(StandardCharsets.UTF_8), encodeBase64, null);
     }
 
     public final void authenticate() {
@@ -262,72 +262,89 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
             log.error(e.getMessage(), e);
         }
 
-        String jwtToken = null;
-
-        log.debug("Checking Auth token in cookies or headers");
-        if (session.getUpgradeRequest()
-                .getCookies() != null && session.getUpgradeRequest()
-                .getCookies().size() > 0) {
-            log.debug("Token found in cookies");
-            HttpCookie cookie = session.getUpgradeRequest()
-                    .getCookies()
-                    .stream()
-                    .filter((c) -> c.getName().equals(WebSocketConstants.AUTHORIZATION_COOKIE_NAME))
-                    .findAny().orElse(null);
-
-            if (cookie != null) {
-                log.debug("Cookie found, checking authentication...");
-                jwtToken = cookie.getValue();
-            }
-        } else if (session.getUpgradeRequest().getHeader("Authorization") != null) {
-            log.debug("token found in header");
-            String authHeader = session.getUpgradeRequest().getHeader("Authorization");
-            // Support both "Bearer <token>" and "JWT <token>" formats
-            if (authHeader.startsWith("Bearer ")) {
-                jwtToken = authHeader.substring(7);
-            } else if (authHeader.startsWith("JWT ")) {
-                jwtToken = authHeader.substring(4);
-            } else {
-                jwtToken = authHeader;
-            }
-        }
+        String jwtToken = extractJwtToken();
 
         if (jwtToken != null && jwtTokenService != null) {
-            // Load valid issuers from all registered AuthenticationProviders
-            List<String> issuers = loadValidIssuers();
-            if (jwtTokenService.validateToken(issuers, jwtToken)) {
-                this.principals = jwtTokenService.getPrincipals(jwtToken);
-                if (this.principals != null && !this.principals.isEmpty()) {
-                    // Extract username from the first principal
-                    this.loggedUsername = this.principals.iterator().next().getName();
-                }
-            }
+            validateAndExtractPrincipal(jwtToken);
         }
 
         if (this.loggedUsername == null || this.loggedUsername.isEmpty()) {
             log.debug("User not authorized to connect to websocket");
-            //Closes the connection if the client is not authenticated and authentication is required
             if (this.isAuthenticationRequired()) {
-                try {
-                    session.getRemote().sendString("Client not authenticated!", new WriteCallback() {
-                        @Override
-                        public void writeFailed(Throwable x) {
-                            log.warn("Error while sending message: {}", new Object[]{x});
-                        }
-
-                        @Override
-                        public void writeSuccess() {
-                            log.debug("Send message success!");
-                        }
-                    });
-                    session.close(1008, "Client not authenticated!");
-                } catch (Exception e) {
-                    log.error(e.getMessage(), e);
-                }
+                sendUnauthenticatedAndClose();
             }
             return null;
         }
         return this.loggedUsername;
+    }
+
+    private String extractJwtToken() {
+        log.debug("Checking Auth token in cookies or headers");
+        String jwtToken = extractJwtFromCookies();
+        if (jwtToken == null) {
+            jwtToken = extractJwtFromHeader();
+        }
+        return jwtToken;
+    }
+
+    private String extractJwtFromCookies() {
+        List<HttpCookie> cookies = session.getUpgradeRequest().getCookies();
+        if (cookies == null || cookies.isEmpty()) {
+            return null;
+        }
+        log.debug("Token found in cookies");
+        HttpCookie cookie = cookies.stream()
+                .filter(c -> c.getName().equals(WebSocketConstants.AUTHORIZATION_COOKIE_NAME))
+                .findAny().orElse(null);
+        if (cookie != null) {
+            log.debug("Cookie found, checking authentication...");
+            return cookie.getValue();
+        }
+        return null;
+    }
+
+    private String extractJwtFromHeader() {
+        String authHeader = session.getUpgradeRequest().getHeader("Authorization");
+        if (authHeader == null) {
+            return null;
+        }
+        log.debug("token found in header");
+        // Support both "Bearer <token>" and "JWT <token>" formats
+        if (authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        } else if (authHeader.startsWith("JWT ")) {
+            return authHeader.substring(4);
+        }
+        return authHeader;
+    }
+
+    private void validateAndExtractPrincipal(String jwtToken) {
+        List<String> issuers = loadValidIssuers();
+        if (jwtTokenService.validateToken(issuers, jwtToken)) {
+            this.principals = jwtTokenService.getPrincipals(jwtToken);
+            if (this.principals != null && !this.principals.isEmpty()) {
+                this.loggedUsername = this.principals.iterator().next().getName();
+            }
+        }
+    }
+
+    private void sendUnauthenticatedAndClose() {
+        try {
+            session.getRemote().sendString("Client not authenticated!", new WriteCallback() {
+                @Override
+                public void writeFailed(Throwable x) {
+                    log.warn("Error while sending message", x);
+                }
+
+                @Override
+                public void writeSuccess() {
+                    log.debug("Send message success!");
+                }
+            });
+            session.close(1008, "Client not authenticated!");
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
     }
 
     @Override
@@ -343,11 +360,11 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
                 if (providers != null) {
                     issuers = providers.stream()
                             .flatMap(p -> p.issuersNames().stream())
-                            .collect(Collectors.toList());
+                            .toList();
                 }
             }
         } catch (Exception e) {
-            log.warn("Could not load authentication providers for JWT issuer validation: {}", e.getMessage());
+            log.warn("Could not load authentication providers for JWT issuer validation: {}", e.getMessage(), e);
         }
         return issuers;
     }

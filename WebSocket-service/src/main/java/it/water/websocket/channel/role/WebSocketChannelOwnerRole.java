@@ -32,7 +32,7 @@ public class WebSocketChannelOwnerRole implements WebSocketChannelRole {
 
     @Override
     public Set<WebSocketCommand> getAllowedCmds() {
-        return WebSocketChannelCommandType.allCmds;
+        return WebSocketChannelCommandType.ALL_CMDS;
     }
 
     @Override

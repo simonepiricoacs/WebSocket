@@ -18,8 +18,9 @@
 package it.water.websocket.channel.command;
 
 import it.water.core.interceptors.annotations.FrameworkComponent;
-import it.water.websocket.api.channel.*;
-import it.water.websocket.channel.role.WebSocketChannelRoleManager;
+import it.water.websocket.api.channel.WebSocketChannelCommand;
+import it.water.websocket.api.channel.WebSocketChannelManager;
+import it.water.websocket.api.channel.WebSocketChannelSession;
 import it.water.websocket.channel.util.WebSocketChannelConstants;
 import it.water.websocket.model.message.WebSocketMessage;
 

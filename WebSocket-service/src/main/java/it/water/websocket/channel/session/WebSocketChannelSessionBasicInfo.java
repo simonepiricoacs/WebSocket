@@ -31,10 +31,10 @@ import java.util.Set;
 
 public class WebSocketChannelSessionBasicInfo implements WebSocketChannelSessionInfo {
     @JsonIgnore
-    private static Logger log = LoggerFactory.getLogger(WebSocketChannelSessionBasicInfo.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketChannelSessionBasicInfo.class);
 
     @JsonIgnore
-    private static ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     private WebSocketUserInfo userInfo;
     private WebSocketChannel channel;
@@ -72,10 +72,11 @@ public class WebSocketChannelSessionBasicInfo implements WebSocketChannelSession
     }
 
     public static WebSocketChannelSessionBasicInfo fromString(String message) {
+        if (message == null) return null;
         try {
             return mapper.readValue(message, WebSocketChannelSessionBasicInfo.class);
-        } catch (Throwable t) {
-            log.debug("Error while parsing websocket channel user info: {}", new Object[]{t.getMessage()});
+        } catch (Exception t) {
+            log.debug("Error while parsing websocket channel user info: {}", t.getMessage(), t);
         }
         return null;
     }
@@ -83,7 +84,7 @@ public class WebSocketChannelSessionBasicInfo implements WebSocketChannelSession
     public String toJson() {
         try {
             return mapper.writeValueAsString(this);
-        } catch (Throwable t) {
+        } catch (Exception t) {
             log.error(t.getMessage(), t);
         }
         return "{}";

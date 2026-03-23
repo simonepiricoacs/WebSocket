@@ -19,14 +19,8 @@ package it.water.websocket.actions;
 
 import it.water.core.api.action.Action;
 
-/**
- *
- * @author Aristide Cittadino Model class that enumerate WebSocket Actions
- *
- */
 public enum WebSocketAction implements Action {
 
-	//TO DO: add enumerations here
 	CREATE_CHANNEL("CREATE_CHANNEL", 1);
 
 	private String name;

@@ -17,9 +17,6 @@
 
 package it.water.websocket.api;
 
-/**
- * Author Aristide Cittadino
- */
 public interface WebSocketCommand {
     String getCommandName();
 }

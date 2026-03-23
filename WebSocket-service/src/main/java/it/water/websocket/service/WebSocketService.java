@@ -18,11 +18,11 @@
 package it.water.websocket.service;
 
 import it.water.core.api.bundle.ApplicationProperties;
+import it.water.core.api.interceptors.OnActivate;
+import it.water.core.api.interceptors.OnDeactivate;
 import it.water.core.api.registry.ComponentRegistry;
 import it.water.core.interceptors.annotations.FrameworkComponent;
 import it.water.core.interceptors.annotations.Inject;
-import it.water.core.api.interceptors.OnActivate;
-import it.water.core.api.interceptors.OnDeactivate;
 import it.water.websocket.api.WebSocketEndPoint;
 import it.water.websocket.api.WebSocketPolicy;
 import it.water.websocket.api.WebSocketSession;
@@ -37,27 +37,32 @@ import org.eclipse.jetty.websocket.api.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Author Generoso Martello
  * Component which opens a web socket session and keeps track of all user's sessions.
  * Ported from HyperIoT to Water Framework.
  */
 @FrameworkComponent
 @WebSocket()
+@SuppressWarnings("java:S112") // WebSocket event handlers must catch broad exceptions to prevent connection teardown on any runtime error
 public class WebSocketService {
-    private Logger log = LoggerFactory.getLogger(WebSocketService.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(WebSocketService.class);
 
     // Default configuration values
     private static final int DEFAULT_OPEN_THREADS = 200;
     private static final int DEFAULT_CLOSE_THREADS = 200;
     private static final int DEFAULT_MESSAGE_THREADS = 500;
     private static final int DEFAULT_ERROR_THREADS = 20;
+    @SuppressWarnings("java:S1075") // configurable default; overridable via PROP_WS_BASE_PATH property
     private static final String DEFAULT_WS_BASE_PATH = "/ws";
 
     // Property keys for ApplicationProperties
@@ -125,7 +130,7 @@ public class WebSocketService {
                 try {
                     webSocketSession.dispose();
                 } catch (Exception e) {
-                    log.warn("Error disposing session: {}", e.getMessage());
+                    log.warn("Error disposing session: {}", e.getMessage(), e);
                 }
             }
         }
@@ -146,39 +151,42 @@ public class WebSocketService {
             if (requestPath.startsWith("/")) requestPath = requestPath.substring(1);
             if (endPointHashMap.containsKey(requestPath)) {
                 WebSocketEndPoint webSocketEndPoint = endPointHashMap.get(requestPath);
-                Runnable r = () -> {
-                    try {
-                        WebSocketSession webSocketSession = webSocketEndPoint.getHandler(session);
-                        if (webSocketSession.isAuthenticationRequired())
-                            webSocketSession.authenticate();
-                        else
-                            webSocketSession.authenticateAnonymous();
-                        //2 minutes idle timeout
-                        session.setIdleTimeout(120000);
-                        sessions.put(webSocketSession.getSession(), webSocketSession);
-                        List<WebSocketPolicy> policies = webSocketSession.getWebScoketPolicies();
-                        if (policies != null && policies.size() > 0) {
-                            webSocketSessionPolicies.put(session, policies);
-                            applyCustomPolicies(session, policies);
-                        }
-                        webSocketSession.initialize();
-                    } catch (Throwable t) {
-                        log.error(t.getMessage(), t);
-                    }
-                };
+                Runnable r = () -> setupSessionForEndPoint(webSocketEndPoint, session);
                 Executor onOpenCustomExecutor = webSocketEndPoint.getExecutorForOpenConnections(session);
                 Executor runner = (onOpenCustomExecutor != null) ? onOpenCustomExecutor : onOpenDispatchThreads;
                 runner.execute(r);
             } else {
-                WebSocketMessage m = WebSocketMessage.createMessage(null, "Unknown service requested.".getBytes(), WebSocketMessageType.ERROR);
+                WebSocketMessage m = WebSocketMessage.createMessage(null, "Unknown service requested.".getBytes(StandardCharsets.UTF_8), WebSocketMessageType.ERROR);
                 session.close(1010, m.toJson());
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
     }
 
+    private void setupSessionForEndPoint(WebSocketEndPoint webSocketEndPoint, Session session) {
+        try {
+            WebSocketSession webSocketSession = webSocketEndPoint.getHandler(session);
+            if (webSocketSession.isAuthenticationRequired())
+                webSocketSession.authenticate();
+            else
+                webSocketSession.authenticateAnonymous();
+            //2 minutes idle timeout
+            session.setIdleTimeout(120000);
+            sessions.put(webSocketSession.getSession(), webSocketSession);
+            List<WebSocketPolicy> policies = webSocketSession.getWebScoketPolicies();
+            if (policies != null && !policies.isEmpty()) {
+                webSocketSessionPolicies.put(session, policies);
+                applyCustomPolicies(session, policies);
+            }
+            webSocketSession.initialize();
+        } catch (Exception t) {
+            log.error(t.getMessage(), t);
+        }
+    }
+
     @OnWebSocketClose
+    @SuppressWarnings("java:S1172") // Jetty callback signature provides the status code even if this implementation does not use it
     public void onClose(Session session, int statusCode, String reason) {
         Runnable r = () -> {
             try {
@@ -186,92 +194,112 @@ public class WebSocketService {
                 sessions.remove(session);
                 webSocketSessionPolicies.remove(session);
                 log.debug("On Close websocket : {}", reason);
-                if (session.isOpen()) {
-                    try {
-                        WebSocketMessage m = WebSocketMessage.createMessage(null, ("Closing websocket: " + reason).getBytes(), WebSocketMessageType.DISCONNECTING);
-                        WriteCallback wc = new WriteCallback() {
-                            @Override
-                            public void writeFailed(Throwable x) {
-                                log.warn("Error while sending message: {}", x);
-                            }
-
-                            @Override
-                            public void writeSuccess() {
-                                log.debug("Close message sent!");
-                            }
-                        };
-                        //if websocket is a WebSocketAbstractSession it will use its own method for sending messages
-                        if (webSocketSession instanceof WebSocketAbstractSession) {
-                            ((WebSocketAbstractSession) webSocketSession).sendRemote(m, wc);
-                        } else {
-                            session.getRemote().sendString(m.toJson(), wc);
-                        }
-                    } catch (Throwable e) {
-                        log.warn("Cannot send closing reason on websocket: {}", e.getMessage());
-                    }
-                }
-
-                if (webSocketSession != null) {
-                    try {
-                        webSocketSession.dispose();
-                    } catch (Throwable e) {
-                        log.warn("Error closing connection: {}", e.getMessage());
-                    }
-                }
-            } catch (Throwable t) {
-                log.error("Error while closing websocket: {} - {}", new Object[]{t.getMessage(), t.getCause()});
+                sendClosingMessage(session, webSocketSession, reason);
+                disposeSession(webSocketSession);
+            } catch (Exception t) {
+                log.error("Error while closing websocket: {}", t.getMessage(), t);
             }
         };
         onCloseDispatchThreads.execute(r);
     }
 
+    private void sendClosingMessage(Session session, WebSocketSession webSocketSession, String reason) {
+        if (!session.isOpen()) return;
+        try {
+            WebSocketMessage m = WebSocketMessage.createMessage(null, ("Closing websocket: " + reason).getBytes(StandardCharsets.UTF_8), WebSocketMessageType.DISCONNECTING);
+            WriteCallback wc = new WriteCallback() {
+                @Override
+                public void writeFailed(Throwable x) {
+                    log.warn("Error while sending message: {}", x.getMessage(), x);
+                }
+
+                @Override
+                public void writeSuccess() {
+                    log.debug("Close message sent!");
+                }
+            };
+            //if websocket is a WebSocketAbstractSession it will use its own method for sending messages
+            if (webSocketSession instanceof WebSocketAbstractSession abstractSession) {
+                abstractSession.sendRemote(m, wc);
+            } else {
+                session.getRemote().sendString(m.toJson(), wc);
+            }
+        } catch (Exception e) {
+            log.warn("Cannot send closing reason on websocket: {}", e.getMessage(), e);
+        }
+    }
+
+    private void disposeSession(WebSocketSession webSocketSession) {
+        if (webSocketSession == null) return;
+        try {
+            webSocketSession.dispose();
+        } catch (Exception e) {
+            log.warn("Error closing connection: {}", e.getMessage(), e);
+        }
+    }
+
 
     @OnWebSocketMessage
+    @SuppressWarnings("java:S2259") // session lifecycle is managed asynchronously and the lookup may be cleared between validation and policy handling
     public void onMessage(Session session, String message) {
         Runnable r = () -> {
             try {
-                if (session == null || !session.isOpen())
-                    return;
+                if (session == null || !session.isOpen()) return;
                 log.debug("On Message websocket getting session...");
                 WebSocketSession webSocketSession = sessions.get(session);
-                //Policy Check
-                if (webSocketSessionPolicies != null && !webSocketSessionPolicies.isEmpty() && webSocketSessionPolicies.containsKey(webSocketSession.getSession())) {
-                    List<WebSocketPolicy> policies = webSocketSessionPolicies.get(webSocketSession.getSession());
-                    for (WebSocketPolicy policy : policies) {
-                        if (!policy.isSatisfied(webSocketSession.getPolicyParams(), message.getBytes())) {
-                            if (policy.printWarningOnFail()) {
-                                log.error("Policy {} not satisfied! ", policy.getClass().getSimpleName());
-                            }
-
-                            if (policy.sendWarningBackToClientOnFail()) {
-                                String policyWarning = "Policy " + policy.getClass().getSimpleName() + " Not satisfied!";
-                                WebSocketMessage m = WebSocketMessage.createMessage(null, policyWarning.getBytes(), WebSocketMessageType.WEBSOCKET_POLICY_WARNING);
-                                webSocketSession.getSession().getRemote().sendString(m.toJson());
-                            }
-
-                            if (policy.closeWebSocketOnFail()) {
-                                webSocketSession.dispose();
-                                return;
-                            }
-
-                            if (policy.ignoreMessageOnFail()) {
-                                return;
-                            }
-                        }
-                    }
-                }
-
-                //Forwarding message after policy check
+                if (!isPolicySatisfied(webSocketSession, message)) return;
                 long sessionFoundTime = System.nanoTime();
                 if (webSocketSession != null) {
                     webSocketSession.onMessage(message);
                     log.debug("Message forwarded to session in {} seconds", ((double) System.nanoTime() - sessionFoundTime) / 1_000_000_000);
                 }
-            } catch (Throwable e) {
-                log.error("Error while forwarding message to websocket session: {}", e);
+            } catch (Exception e) {
+                log.error("Error while forwarding message to websocket session: {}", e.getMessage(), e);
             }
         };
         onMessageDispatchThreads.execute(r);
+    }
+
+    private boolean isPolicySatisfied(WebSocketSession webSocketSession, String message) {
+        if (!hasPoliciesForSession(webSocketSession)) return true;
+        List<WebSocketPolicy> policies = webSocketSessionPolicies.get(webSocketSession.getSession());
+        for (WebSocketPolicy policy : policies) {
+            if (!policy.isSatisfied(webSocketSession.getPolicyParams(), message.getBytes(StandardCharsets.UTF_8))
+                    && shouldStopOnPolicyViolation(policy, webSocketSession)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean hasPoliciesForSession(WebSocketSession webSocketSession) {
+        return webSocketSessionPolicies != null
+                && !webSocketSessionPolicies.isEmpty()
+                && webSocketSessionPolicies.containsKey(webSocketSession.getSession());
+    }
+
+    private boolean shouldStopOnPolicyViolation(WebSocketPolicy policy, WebSocketSession webSocketSession) {
+        if (policy.printWarningOnFail()) {
+            log.error("Policy {} not satisfied!", policy.getClass().getSimpleName());
+        }
+        if (policy.sendWarningBackToClientOnFail()) {
+            sendPolicyWarning(policy, webSocketSession);
+        }
+        if (policy.closeWebSocketOnFail()) {
+            webSocketSession.dispose();
+            return true;
+        }
+        return policy.ignoreMessageOnFail();
+    }
+
+    private void sendPolicyWarning(WebSocketPolicy policy, WebSocketSession webSocketSession) {
+        try {
+            String policyWarning = "Policy " + policy.getClass().getSimpleName() + " Not satisfied!";
+            WebSocketMessage m = WebSocketMessage.createMessage(null, policyWarning.getBytes(StandardCharsets.UTF_8), WebSocketMessageType.WEBSOCKET_POLICY_WARNING);
+            webSocketSession.getSession().getRemote().sendString(m.toJson());
+        } catch (Exception e) {
+            log.warn("Could not send policy warning to client: {}", e.getMessage(), e);
+        }
     }
 
     @OnWebSocketError
@@ -279,11 +307,11 @@ public class WebSocketService {
         Runnable r = () -> {
             if (session == null)
                 return;
-            log.warn("On Web Socket Error: {} , {}", new Object[]{cause.getMessage(), cause});
+            log.warn("On Web Socket Error: {}", cause.getMessage(), cause);
             try {
-                log.debug("Trying close websocket on error: {} , {}", new Object[]{cause.getMessage(), cause});
+                log.debug("Trying close websocket on error: {}", cause.getMessage(), cause);
                 WebSocketService.this.onClose(session, 500, cause.getCause() != null ? cause.getCause().getMessage() : cause.getMessage());
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 log.error(e.getMessage(), e);
             }
         };
@@ -317,20 +345,15 @@ public class WebSocketService {
      */
     private void applyCustomPolicies(Session s, List<WebSocketPolicy> policies) {
         for (WebSocketPolicy policy : policies) {
-            if (policy instanceof InputBufferSizePolicy) {
-                InputBufferSizePolicy ibsPolicy = (InputBufferSizePolicy) policy;
+            if (policy instanceof InputBufferSizePolicy ibsPolicy) {
                 s.getPolicy().setInputBufferSize(ibsPolicy.getInputBufferSize());
-            } else if (policy instanceof MaxBinaryMessageBufferSizePolicy) {
-                MaxBinaryMessageBufferSizePolicy mbmbsPolicy = (MaxBinaryMessageBufferSizePolicy) policy;
+            } else if (policy instanceof MaxBinaryMessageBufferSizePolicy mbmbsPolicy) {
                 s.getPolicy().setMaxBinaryMessageBufferSize(mbmbsPolicy.getMaxBinaryMessageBufferSize());
-            } else if (policy instanceof MaxBinaryMessageSizePolicy) {
-                MaxBinaryMessageSizePolicy mbmsPolicy = (MaxBinaryMessageSizePolicy) policy;
+            } else if (policy instanceof MaxBinaryMessageSizePolicy mbmsPolicy) {
                 s.getPolicy().setMaxBinaryMessageSize(mbmsPolicy.getMaxBinaryMessageSize());
-            } else if (policy instanceof MaxTextMessageBufferSizePolicy) {
-                MaxTextMessageBufferSizePolicy mtmbsPolicy = (MaxTextMessageBufferSizePolicy) policy;
+            } else if (policy instanceof MaxTextMessageBufferSizePolicy mtmbsPolicy) {
                 s.getPolicy().setMaxTextMessageBufferSize(mtmbsPolicy.getMaxTextMessageBufferSize());
-            } else if (policy instanceof MaxTextMessageSizePolicy) {
-                MaxTextMessageSizePolicy mtmsPolicy = (MaxTextMessageSizePolicy) policy;
+            } else if (policy instanceof MaxTextMessageSizePolicy mtmsPolicy) {
                 s.getPolicy().setMaxTextMessageSize(mtmsPolicy.getMaxTextMessageSizePolicy());
             }
         }

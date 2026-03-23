@@ -27,6 +27,7 @@ import java.util.Map;
  * This class maps the concept of encryption policy, It owns an encryption mode which is responsable
  * of how messages are encrypted or decrypted.
  */
+@SuppressWarnings("java:S112") // encryption SPI intentionally propagates generic crypto exceptions
 public class WebSocketEncryption {
 
     private WebSocketEncryptionMode mode;
@@ -39,6 +40,7 @@ public class WebSocketEncryption {
         return mode.encrypt(message, encodeBase64);
     }
 
+    @SuppressWarnings("java:S1172") // decodeBase64 is part of the public API contract; not forwarded to the current mode but reserved for future modes
     public byte[] decrypt(byte[] message, boolean decodeBase64) throws Exception {
         return mode.decrypt(message);
     }
