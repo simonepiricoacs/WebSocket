@@ -132,6 +132,14 @@ class WebSocketChannelRoleTest {
     }
 
     @Test
+    void roleManagerConstructorThrowsUnsupportedOperationException() throws Exception {
+        var constructor = WebSocketChannelRoleManager.class.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        var invocation = assertThrows(java.lang.reflect.InvocationTargetException.class, constructor::newInstance);
+        assertInstanceOf(UnsupportedOperationException.class, invocation.getCause());
+    }
+
+    @Test
     void rolesAsCommaSeparatedListAndBack() {
         WebSocketChannelOwnerRole owner = new WebSocketChannelOwnerRole();
         WebSocketChannelParticipantRole participant = new WebSocketChannelParticipantRole();
@@ -172,6 +180,19 @@ class WebSocketChannelRoleTest {
 
         assertThrows(WaterRuntimeException.class, () ->
                 WebSocketChannelRoleManager.getWebSocketChannelRole("owner"));
+    }
+
+    @Test
+    void getWebSocketChannelRoleSingleFoundReturnsRole() {
+        WebSocketChannelOwnerRole owner = new WebSocketChannelOwnerRole();
+        WebSocketChannelRoleManager.setComponentRegistry(mockRegistry);
+        when(mockRegistry.getComponentFilterBuilder()).thenReturn(filterBuilder);
+        when(filterBuilder.createFilter(anyString(), anyString())).thenReturn(filter);
+        when(mockRegistry.findComponents(eq(WebSocketChannelRole.class), any())).thenReturn(List.of(owner));
+
+        WebSocketChannelRole role = WebSocketChannelRoleManager.getWebSocketChannelRole("owner");
+
+        assertSame(owner, role);
     }
 
     @Test

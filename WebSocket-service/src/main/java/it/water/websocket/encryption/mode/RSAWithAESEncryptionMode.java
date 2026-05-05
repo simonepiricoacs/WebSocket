@@ -17,25 +17,34 @@
 
 package it.water.websocket.encryption.mode;
 
+import it.water.core.api.security.EncryptionUtil;
 import it.water.websocket.model.WebSocketConstants;
 import org.eclipse.jetty.websocket.api.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.crypto.Cipher;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
-import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * RSA+AES encryption mode for WebSocket channels.
+ * <p>
+ * All crypto operations (keystore access, cipher creation, key parsing) are
+ * delegated to {@link EncryptionUtil} — the Water Framework's standard crypto
+ * service that reads keystore configuration from {@code ApplicationProperties}
+ * (keys {@code water.keystore.*}).
+ * <p>
+ * RSA ciphers are initialized lazily on first use rather than in a
+ * {@code static { }} block, so the framework has time to inject
+ * {@code EncryptionUtil} before any crypto operation is attempted.
+ */
 @SuppressWarnings("java:S112") // encryption SPI intentionally propagates generic crypto exceptions
 public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
     private static final Logger log = LoggerFactory.getLogger(RSAWithAESEncryptionMode.class);
@@ -43,31 +52,37 @@ public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
     public static final String MODE_PARAM_AES_PASSWORD = "aesPassword";
     public static final String MODE_PARAM_AES_IV = "aesIv";
 
-    private static Cipher currRsaCipherEnc;
-    private static Cipher currRsaCipherEncWeb;
-    private static Cipher currRsaCipherDec;
-    private static Cipher currRsaCipherDecWeb;
+    private final EncryptionUtil encryptionUtil;
 
-    static {
-        try {
-            KeyPair serverKeyPair = getServerKeyPair();
-            if (serverKeyPair != null) {
-                PrivateKey key = serverKeyPair.getPrivate();
-                currRsaCipherEnc = getCipherRSAOAEPPadding();
-                currRsaCipherEncWeb = getCipherRSAPKCS1Padding();
-                currRsaCipherDec = getCipherRSAOAEPPadding();
-                currRsaCipherDec.init(Cipher.DECRYPT_MODE, key);
-                currRsaCipherDecWeb = getCipherRSAPKCS1Padding();
-                currRsaCipherDecWeb.init(Cipher.DECRYPT_MODE, key);
-            }
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
-        }
-    }
+    // Lazy-initialized RSA ciphers (guarded by synchronized on this)
+    private Cipher rsaCipherEnc;
+    private Cipher rsaCipherEncWeb;
+    private Cipher rsaCipherDec;
+    private Cipher rsaCipherDecWeb;
+    private boolean rsaCiphersInitialized;
 
     private boolean webSession;
     private Cipher currAesCipherEnc;
     private Cipher currAesCipherDec;
+
+    /**
+     * Creates an encryption mode backed by the given {@link EncryptionUtil}.
+     *
+     * @param encryptionUtil the Water encryption service (never null in production;
+     *                       may be null in tests that only exercise symmetric paths)
+     */
+    public RSAWithAESEncryptionMode(EncryptionUtil encryptionUtil) {
+        this.encryptionUtil = encryptionUtil;
+    }
+
+    /**
+     * No-arg constructor for backward compatibility in tests.
+     * RSA operations will fail with a clear error if attempted without
+     * an {@code EncryptionUtil}.
+     */
+    public RSAWithAESEncryptionMode() {
+        this(null);
+    }
 
     @Override
     public void init(Session session) {
@@ -84,14 +99,14 @@ public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
                 this.webSession = false;
             }
             if (clientPubKeyStrEnc != null) {
-                KeyPair serverKeyPair = getServerKeyPair();
-                if (serverKeyPair == null) throw new IllegalStateException("Server key pair not available");
+                ensureEncryptionUtil();
+                KeyPair serverKeyPair = encryptionUtil.getServerKeyPair();
                 PrivateKey serverPrivateKey = serverKeyPair.getPrivate();
                 this.setPrivateKey(serverPrivateKey);
                 byte[] decodedPubKey = Base64.getDecoder().decode(clientPubKeyStrEnc.getBytes(StandardCharsets.UTF_8));
                 byte[] decryptedPubKey = decryptAsymmetric(serverPrivateKey, decodedPubKey);
                 String clientPubKeyStr = new String(decryptedPubKey, StandardCharsets.UTF_8);
-                PublicKey clientPubKey = getPublicKeyFromString(clientPubKeyStr);
+                PublicKey clientPubKey = encryptionUtil.getPublicKeyFromString(clientPubKeyStr);
                 this.setPublicKey(clientPubKey);
             }
         } catch (Exception e) {
@@ -114,7 +129,11 @@ public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
         Cipher cipher = getCipherRSAEnc();
         if (cipher == null) throw new IllegalStateException("RSA encryption cipher not initialized");
         synchronized (cipher) {
-            return encryptText(publicKey, plainText, encodeBase64, cipher);
+            cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+            if (encodeBase64) {
+                return Base64.getEncoder().encode(cipher.doFinal(plainText));
+            }
+            return cipher.doFinal(plainText);
         }
     }
 
@@ -148,32 +167,44 @@ public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
         return params;
     }
 
-    private Cipher getCipherRSADec() {
-        try {
-            if (this.webSession)
-                return currRsaCipherDecWeb;
-            return currRsaCipherDec;
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
+    // ---- RSA cipher access (lazy-initialized via EncryptionUtil) ----
+
+    private synchronized void ensureRSACiphersInitialized() {
+        if (rsaCiphersInitialized) {
+            return;
         }
-        return null;
+        ensureEncryptionUtil();
+        try {
+            KeyPair serverKeyPair = encryptionUtil.getServerKeyPair();
+            PrivateKey key = serverKeyPair.getPrivate();
+            rsaCipherEnc = encryptionUtil.getCipherRSAOAEPPAdding();
+            rsaCipherEncWeb = encryptionUtil.getCipherRSAPKCS1Padding(true);
+            rsaCipherDec = encryptionUtil.getCipherRSAOAEPPAdding();
+            rsaCipherDec.init(Cipher.DECRYPT_MODE, key);
+            rsaCipherDecWeb = encryptionUtil.getCipherRSAPKCS1Padding(true);
+            rsaCipherDecWeb.init(Cipher.DECRYPT_MODE, key);
+            rsaCiphersInitialized = true;
+        } catch (Exception e) {
+            log.error("Failed to initialize RSA ciphers via EncryptionUtil: {}", e.getMessage(), e);
+        }
+    }
+
+    private Cipher getCipherRSADec() {
+        ensureRSACiphersInitialized();
+        return this.webSession ? rsaCipherDecWeb : rsaCipherDec;
     }
 
     private Cipher getCipherRSAEnc() {
-        try {
-            if (this.webSession)
-                return currRsaCipherEncWeb;
-            return currRsaCipherEnc;
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
-        }
-        return null;
+        ensureRSACiphersInitialized();
+        return this.webSession ? rsaCipherEncWeb : rsaCipherEnc;
     }
 
-    @SuppressWarnings("java:S3329") // IV is randomly generated per session during channel setup (WebSocketRSAWithAESEncryptedBasicChannel.initChannelEncryption)
-    private Cipher getCipherAESEnc() throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchProviderException {
+    // ---- AES cipher access (via EncryptionUtil) ----
+
+    @SuppressWarnings("java:S3329") // IV is randomly generated per session during channel setup
+    private Cipher getCipherAESEnc() throws InvalidKeyException, InvalidAlgorithmParameterException {
         if (this.currAesCipherEnc == null) {
-            this.currAesCipherEnc = getCipherAES();
+            this.currAesCipherEnc = getAESCipherInstance();
             SecretKeySpec skeySpec = new SecretKeySpec(this.getSymmetricPassword(), "AES");
             IvParameterSpec iv = null;
             if (this.getSymmetricIv() != null)
@@ -187,11 +218,10 @@ public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
         return currAesCipherEnc;
     }
 
-
-    @SuppressWarnings("java:S3329") // IV is randomly generated per session during channel setup (WebSocketRSAWithAESEncryptedBasicChannel.initChannelEncryption)
-    private Cipher getCipherAESDec() throws InvalidKeyException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, NoSuchPaddingException, NoSuchProviderException {
+    @SuppressWarnings("java:S3329") // IV is randomly generated per session during channel setup
+    private Cipher getCipherAESDec() throws InvalidKeyException, InvalidAlgorithmParameterException {
         if (this.currAesCipherDec == null) {
-            this.currAesCipherDec = getCipherAES();
+            this.currAesCipherDec = getAESCipherInstance();
             SecretKeySpec skeySpec = new SecretKeySpec(this.getSymmetricPassword(), "AES");
             IvParameterSpec iv = null;
             if (this.getSymmetricIv() != null)
@@ -205,123 +235,28 @@ public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
         return currAesCipherDec;
     }
 
-    // ---- Crypto utility methods (replacing HyperIoTSecurityUtil) ----
-
-    /**
-     * Returns the server KeyPair loaded from the JKS keystore.
-     * Keystore path, password, key password, and alias are read from system properties.
-     *
-     * @return the server KeyPair, or null if loading fails
-     */
-    private static KeyPair getServerKeyPair() {
+    private Cipher getAESCipherInstance() {
+        if (encryptionUtil != null) {
+            return encryptionUtil.getCipherAES();
+        }
+        // Fallback for tests without EncryptionUtil: create directly via BouncyCastle
         try {
-            String keystoreFile = System.getProperty("it.water.security.keystore.file", "keystore.jks");
-            String keystorePassword = System.getProperty("it.water.security.keystore.password", "changeit");
-            String keyPassword = System.getProperty("it.water.security.key.password", "changeit");
-            String alias = System.getProperty("it.water.security.keystore.alias", "water");
-
-            KeyStore keystore = KeyStore.getInstance("JKS");
-            try (FileInputStream fis = new FileInputStream(new File(keystoreFile))) {
-                keystore.load(fis, keystorePassword.toCharArray());
-            }
-            Key key = keystore.getKey(alias, keyPassword.toCharArray());
-            if (key instanceof PrivateKey privateKey) {
-                java.security.cert.Certificate cert = keystore.getCertificate(alias);
-                PublicKey publicKey = cert.getPublicKey();
-                return new KeyPair(publicKey, privateKey);
-            }
+            return Cipher.getInstance("AES/CBC/PKCS5PADDING", "BC");
         } catch (Exception e) {
-            log.error(e.getMessage(), e);
+            throw new IllegalStateException("Cannot create AES cipher: EncryptionUtil not available and BC fallback failed", e);
         }
-        return null;
     }
 
-    /**
-     * Creates RSA Cipher with OAEP Padding using BouncyCastle provider.
-     *
-     * @return Cipher instance
-     * @throws NoSuchPaddingException
-     * @throws NoSuchAlgorithmException
-     * @throws NoSuchProviderException
-     */
-    private static Cipher getCipherRSAOAEPPadding() throws NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException {
-        return Cipher.getInstance("RSA/NONE/OAEPPadding", "BC");
-    }
-
-    /**
-     * Creates RSA Cipher with PKCS1 Padding (ECB mode) using BouncyCastle provider.
-     *
-     * @return Cipher instance
-     * @throws NoSuchPaddingException
-     * @throws NoSuchAlgorithmException
-     * @throws NoSuchProviderException
-     */
-    @SuppressWarnings({"java:S3329", "java:S5542"}) // RSA/ECB/PKCS1PADDING is intentional for legacy web client compatibility
-    private static Cipher getCipherRSAPKCS1Padding() throws NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException {
-        return Cipher.getInstance("RSA/ECB/PKCS1PADDING", "BC");
-    }
-
-    /**
-     * Creates AES Cipher with CBC/PKCS5PADDING using BouncyCastle provider.
-     *
-     * @return Cipher instance
-     * @throws NoSuchPaddingException
-     * @throws NoSuchAlgorithmException
-     * @throws NoSuchProviderException
-     */
-    private static Cipher getCipherAES() throws NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException {
-        return Cipher.getInstance("AES/CBC/PKCS5PADDING", "BC");
-    }
-
-    /**
-     * Parses a PEM-encoded public key string (PKCS8/X509 format) into a PublicKey object.
-     *
-     * @param key PEM-encoded public key string
-     * @return the PublicKey, or null if parsing fails
-     */
-    private static PublicKey getPublicKeyFromString(String key) {
-        try {
-            String publicKeyPEM = key;
-            publicKeyPEM = publicKeyPEM.replace("-----BEGIN PUBLIC KEY-----", "");
-            publicKeyPEM = publicKeyPEM.replace("-----END PUBLIC KEY-----", "");
-            publicKeyPEM = publicKeyPEM.replace("\r", "");
-            publicKeyPEM = publicKeyPEM.replace("\n", "");
-            byte[] byteKey = Base64.getDecoder().decode(publicKeyPEM.getBytes(StandardCharsets.UTF_8));
-            X509EncodedKeySpec x509PublicKey = new X509EncodedKeySpec(byteKey);
-            KeyFactory kf = KeyFactory.getInstance("RSA");
-            return kf.generatePublic(x509PublicKey);
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
+    private void ensureEncryptionUtil() {
+        if (encryptionUtil == null) {
+            throw new IllegalStateException(
+                    "EncryptionUtil not available. RSAWithAESEncryptionMode must be created with an " +
+                    "EncryptionUtil instance (via WebSocketEncryptionFactory) for RSA operations.");
         }
-        return null;
     }
 
-    /**
-     * Encrypts plain text using the given public key and RSA cipher.
-     *
-     * @param pk             Public key
-     * @param text           Plain text bytes
-     * @param encodeInBase64 Whether to Base64-encode the result
-     * @param asymmetricCipher The RSA cipher to use
-     * @return encrypted bytes, optionally Base64-encoded
-     */
-    private static byte[] encryptText(PublicKey pk, byte[] text, boolean encodeInBase64, Cipher asymmetricCipher) throws Exception {
-        asymmetricCipher.init(Cipher.ENCRYPT_MODE, pk);
-        if (encodeInBase64) {
-            return Base64.getEncoder().encode(asymmetricCipher.doFinal(text));
-        }
-        return asymmetricCipher.doFinal(text);
-    }
+    // ---- AES encrypt/decrypt (static helpers, no EncryptionUtil dependency) ----
 
-    /**
-     * Encrypts content with AES using the provided password, IV, and cipher.
-     *
-     * @param aesPassword AES secret key bytes
-     * @param initVector  Initialization vector bytes
-     * @param content     Content string to encrypt
-     * @param aesCipher   The AES cipher to use
-     * @return Base64-encoded encrypted bytes, or null on failure
-     */
     @SuppressWarnings({"java:S3329", "java:S5542"}) // IV is provided and managed by the session encryption protocol
     private static byte[] encryptWithAES(byte[] aesPassword, byte[] initVector, String content, Cipher aesCipher) throws Exception {
         IvParameterSpec iv = new IvParameterSpec(initVector);
@@ -331,21 +266,10 @@ public class RSAWithAESEncryptionMode extends WebSocketMixedEncryptionMode {
         return Base64.getEncoder().encode(encrypted);
     }
 
-    /**
-     * Decrypts AES-encrypted content (Base64-encoded) using the provided password, IV, and cipher.
-     *
-     * @param aesPassword AES secret key bytes
-     * @param initVector  Initialization vector bytes
-     * @param content     Base64-encoded encrypted content string
-     * @param aesCipher   The AES cipher to use
-     * @return Decrypted bytes
-     * @throws Exception on decryption failure
-     */
     private static byte[] decryptWithAES(byte[] aesPassword, byte[] initVector, String content, Cipher aesCipher) throws Exception {
         SecretKeySpec skeySpec = new SecretKeySpec(aesPassword, "AES");
         IvParameterSpec iv = new IvParameterSpec(initVector);
         aesCipher.init(Cipher.DECRYPT_MODE, skeySpec, iv);
         return aesCipher.doFinal(Base64.getDecoder().decode(content));
     }
-
 }

@@ -94,9 +94,9 @@ class WebSocketEncryptionTest {
 
     @Test
     void factoryCreatesRSAAndAESPolicy() {
-        // RSAWithAESEncryptionMode static block may fail gracefully (no keystore in test env)
-        // but the factory method itself should still create a non-null WebSocketEncryption
-        WebSocketEncryption policy = WebSocketEncryptionFactory.createRSAAndAESEncryptionPolicy();
+        // EncryptionUtil can be null in this test — RSA ciphers won't init but the factory
+        // method itself should still create a non-null WebSocketEncryption
+        WebSocketEncryption policy = WebSocketEncryptionFactory.createRSAAndAESEncryptionPolicy(null);
         assertNotNull(policy);
     }
 }

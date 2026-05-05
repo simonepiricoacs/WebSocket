@@ -1,5 +1,7 @@
 package it.water.websocket.encryption.mode;
 
+import it.water.core.api.security.EncryptionUtil;
+import it.water.websocket.model.WebSocketConstants;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.UpgradeRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,17 +12,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import javax.crypto.Cipher;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -31,6 +36,9 @@ class RSAWithAESEncryptionModeTest {
 
     @Mock
     private UpgradeRequest mockUpgradeRequest;
+
+    @Mock
+    private EncryptionUtil mockEncryptionUtil;
 
     private RSAWithAESEncryptionMode mode;
 
@@ -121,6 +129,142 @@ class RSAWithAESEncryptionModeTest {
         assertDoesNotThrow(() -> mode.init(mockSession));
     }
 
+    @Test
+    void initWithHeaderLoadsServerAndClientKeys() throws Exception {
+        KeyPair keyPair = generateKeyPair();
+        PublicKey clientPublicKey = generateKeyPair().getPublic();
+        byte[] encryptedClientKey = Base64.getEncoder().encode("ciphertext".getBytes(StandardCharsets.UTF_8));
+
+        RSAWithAESEncryptionMode modeWithStubbedDecrypt = new RSAWithAESEncryptionMode(mockEncryptionUtil) {
+            @Override
+            protected byte[] decryptAsymmetric(PrivateKey privateKey, byte[] plainText) {
+                return "client-public-key".getBytes(StandardCharsets.UTF_8);
+            }
+        };
+
+        when(mockSession.getUpgradeRequest()).thenReturn(mockUpgradeRequest);
+        when(mockUpgradeRequest.getHeader(anyString())).thenReturn(new String(encryptedClientKey, StandardCharsets.UTF_8));
+        when(mockEncryptionUtil.getServerKeyPair()).thenReturn(keyPair);
+        when(mockEncryptionUtil.getPublicKeyFromString("client-public-key")).thenReturn(clientPublicKey);
+
+        assertDoesNotThrow(() -> modeWithStubbedDecrypt.init(mockSession));
+        assertEquals(keyPair.getPrivate(), modeWithStubbedDecrypt.getPrivateKey());
+        assertEquals(clientPublicKey, modeWithStubbedDecrypt.getPublicKey());
+    }
+
+    @Test
+    void initWithQueryParamMarksSessionAsWebAndLoadsKeys() throws Exception {
+        KeyPair keyPair = generateKeyPair();
+        PublicKey clientPublicKey = generateKeyPair().getPublic();
+        byte[] encryptedClientKey = Base64.getEncoder().encode("ciphertext".getBytes(StandardCharsets.UTF_8));
+        Map<String, java.util.List<String>> params = new HashMap<>();
+        params.put(WebSocketConstants.CLIENT_PUB_KEY_QUERY_PARAM, java.util.List.of(new String(encryptedClientKey, StandardCharsets.UTF_8)));
+
+        RSAWithAESEncryptionMode modeWithStubbedDecrypt = new RSAWithAESEncryptionMode(mockEncryptionUtil) {
+            @Override
+            protected byte[] decryptAsymmetric(PrivateKey privateKey, byte[] plainText) {
+                return "client-public-key".getBytes(StandardCharsets.UTF_8);
+            }
+        };
+
+        when(mockSession.getUpgradeRequest()).thenReturn(mockUpgradeRequest);
+        when(mockUpgradeRequest.getHeader(anyString())).thenReturn(null);
+        when(mockUpgradeRequest.getParameterMap()).thenReturn(params);
+        when(mockEncryptionUtil.getServerKeyPair()).thenReturn(keyPair);
+        when(mockEncryptionUtil.getPublicKeyFromString("client-public-key")).thenReturn(clientPublicKey);
+
+        assertDoesNotThrow(() -> modeWithStubbedDecrypt.init(mockSession));
+        assertEquals(clientPublicKey, modeWithStubbedDecrypt.getPublicKey());
+    }
+
+    @Test
+    void encryptSymmetricUsesEncryptionUtilCipher() throws Exception {
+        RSAWithAESEncryptionMode modeWithEncryptionUtil = new RSAWithAESEncryptionMode(mockEncryptionUtil);
+        modeWithEncryptionUtil.setSymmetricPassword("0123456789abcdef".getBytes(StandardCharsets.UTF_8));
+        modeWithEncryptionUtil.setSymmetricIv("fedcba9876543210".getBytes(StandardCharsets.UTF_8));
+
+        when(mockEncryptionUtil.getCipherAES()).thenAnswer(invocation -> Cipher.getInstance("AES/CBC/PKCS5Padding"));
+
+        byte[] result = modeWithEncryptionUtil.encrypt("hello".getBytes(StandardCharsets.UTF_8), true);
+
+        assertNotNull(result);
+        assertNotEquals("hello", new String(result, StandardCharsets.UTF_8));
+        verify(mockEncryptionUtil).getCipherAES();
+    }
+
+    @Test
+    void decryptSymmetricUsesEncryptionUtilCipher() throws Exception {
+        RSAWithAESEncryptionMode modeWithEncryptionUtil = new RSAWithAESEncryptionMode(mockEncryptionUtil);
+        modeWithEncryptionUtil.setSymmetricPassword("0123456789abcdef".getBytes(StandardCharsets.UTF_8));
+        modeWithEncryptionUtil.setSymmetricIv("fedcba9876543210".getBytes(StandardCharsets.UTF_8));
+
+        when(mockEncryptionUtil.getCipherAES()).thenAnswer(invocation -> Cipher.getInstance("AES/CBC/PKCS5Padding"));
+
+        byte[] cipherText = modeWithEncryptionUtil.encrypt("ciphertext".getBytes(StandardCharsets.UTF_8), true);
+        RSAWithAESEncryptionMode decryptMode = new RSAWithAESEncryptionMode(mockEncryptionUtil);
+        decryptMode.setSymmetricPassword("0123456789abcdef".getBytes(StandardCharsets.UTF_8));
+        decryptMode.setSymmetricIv("fedcba9876543210".getBytes(StandardCharsets.UTF_8));
+        byte[] result = decryptMode.decrypt(cipherText);
+
+        assertArrayEquals("ciphertext".getBytes(StandardCharsets.UTF_8), result);
+        verify(mockEncryptionUtil, times(2)).getCipherAES();
+    }
+
+    @Test
+    void encryptAndDecryptAsymmetricUseInitializedRsaCiphers() throws Exception {
+        KeyPair serverKeyPair = generateKeyPair();
+        PublicKey targetPublicKey = serverKeyPair.getPublic();
+        PrivateKey targetPrivateKey = serverKeyPair.getPrivate();
+        RSAWithAESEncryptionMode rsaMode = new RSAWithAESEncryptionMode(mockEncryptionUtil);
+        rsaMode.setPublicKey(targetPublicKey);
+        rsaMode.setPrivateKey(targetPrivateKey);
+
+        when(mockEncryptionUtil.getServerKeyPair()).thenReturn(serverKeyPair);
+        when(mockEncryptionUtil.getCipherRSAOAEPPAdding())
+                .thenAnswer(invocation -> Cipher.getInstance("RSA/ECB/OAEPWithSHA-1AndMGF1Padding"))
+                .thenAnswer(invocation -> Cipher.getInstance("RSA/ECB/OAEPWithSHA-1AndMGF1Padding"));
+        when(mockEncryptionUtil.getCipherRSAPKCS1Padding(true))
+                .thenAnswer(invocation -> Cipher.getInstance("RSA/ECB/PKCS1Padding"))
+                .thenAnswer(invocation -> Cipher.getInstance("RSA/ECB/PKCS1Padding"));
+
+        byte[] encrypted = rsaMode.encrypt("plain".getBytes(StandardCharsets.UTF_8), false);
+        byte[] decrypted = rsaMode.decrypt(encrypted);
+
+        assertArrayEquals("plain".getBytes(StandardCharsets.UTF_8), decrypted);
+    }
+
+    @Test
+    void encryptAsymmetricWithoutEncryptionUtilFailsFast() throws Exception {
+        mode.setPublicKey(generateKeyPair().getPublic());
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> mode.encrypt("plain".getBytes(StandardCharsets.UTF_8), true));
+        assertTrue(ex.getMessage().contains("EncryptionUtil not available"));
+    }
+
+    @Test
+    void mixedEncryptionModeDelegatesToAsymmetricBranchWithoutSymmetricPassword() throws Exception {
+        TestMixedEncryptionMode mixedMode = new TestMixedEncryptionMode();
+        mixedMode.setPublicKey(generateKeyPair().getPublic());
+        mixedMode.setPrivateKey(generateKeyPair().getPrivate());
+
+        assertArrayEquals("asymmetric-encrypt".getBytes(StandardCharsets.UTF_8),
+                mixedMode.encrypt("plain".getBytes(StandardCharsets.UTF_8), false));
+        assertArrayEquals("asymmetric-decrypt".getBytes(StandardCharsets.UTF_8),
+                mixedMode.decrypt("cipher".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void mixedEncryptionModeDelegatesToSymmetricBranchWhenPasswordIsPresent() throws Exception {
+        TestMixedEncryptionMode mixedMode = new TestMixedEncryptionMode();
+        mixedMode.setSymmetricPassword("0123456789abcdef".getBytes(StandardCharsets.UTF_8));
+        mixedMode.setSymmetricIv("fedcba9876543210".getBytes(StandardCharsets.UTF_8));
+
+        assertArrayEquals("symmetric-encrypt".getBytes(StandardCharsets.UTF_8),
+                mixedMode.encrypt("plain".getBytes(StandardCharsets.UTF_8), false));
+        assertArrayEquals("symmetric-decrypt".getBytes(StandardCharsets.UTF_8),
+                mixedMode.decrypt("cipher".getBytes(StandardCharsets.UTF_8)));
+    }
+
     // --- encrypt / decrypt with AES (symmetric path in WebSocketMixedEncryptionMode) ---
 
     @Test
@@ -161,5 +305,44 @@ class RSAWithAESEncryptionModeTest {
         KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
         gen.initialize(2048);
         return gen.generateKeyPair();
+    }
+
+    private static final class TestMixedEncryptionMode extends WebSocketMixedEncryptionMode {
+        @Override
+        public void init(Session session) {
+        }
+
+        @Override
+        public void dispose(Session s) {
+        }
+
+        @Override
+        public void update(Map<String, Object> params) {
+        }
+
+        @Override
+        public Map<String, Object> getParams() {
+            return Collections.emptyMap();
+        }
+
+        @Override
+        protected byte[] encryptSymmetric(byte[] symmetricPassword, byte[] symmetricIv, String s) {
+            return "symmetric-encrypt".getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        protected byte[] encryptAsymmetric(PublicKey publicKey, byte[] plainText, boolean encodeBase64) {
+            return "asymmetric-encrypt".getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        protected byte[] decryptSymmetric(byte[] symmetricPassword, byte[] symmetricIv, String s) {
+            return "symmetric-decrypt".getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        protected byte[] decryptAsymmetric(PrivateKey privateKey, byte[] plainText) {
+            return "asymmetric-decrypt".getBytes(StandardCharsets.UTF_8);
+        }
     }
 }

@@ -23,10 +23,13 @@ import org.mockito.quality.Strictness;
 
 import javax.crypto.spec.IvParameterSpec;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -147,5 +150,19 @@ class WebSocketChannelRSASessionTest {
         // defineEncryptionPolicyParams() should return the params map (may be null before initialize)
         // Just verify no exception
         assertDoesNotThrow(session::getSession);
+    }
+
+    @Test
+    void defineEncryptionMessageReturnsEncodedPayload() {
+        WebSocketChannelRSAWithAESEncryptedSession session = new WebSocketChannelRSAWithAESEncryptedSession(
+                mockSession, false, channelManager, mockRegistry);
+
+        String payload = session.defineEncryptionMessage();
+
+        String[] parts = payload.split(":");
+        assertEquals(2, parts.length);
+        assertEquals("0123456789abcdef", new String(Base64.getDecoder().decode(parts[0]), StandardCharsets.UTF_8));
+        assertEquals("fedcba9876543210", new String(Base64.getDecoder().decode(parts[1]), StandardCharsets.UTF_8));
+        assertNotNull(session.defineEncryptionPolicyParams());
     }
 }

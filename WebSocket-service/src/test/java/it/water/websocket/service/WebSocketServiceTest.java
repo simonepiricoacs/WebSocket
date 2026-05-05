@@ -6,7 +6,9 @@ import it.water.websocket.api.WebSocketEndPoint;
 import it.water.websocket.api.WebSocketPolicy;
 import it.water.websocket.api.WebSocketSession;
 import it.water.websocket.policy.InputBufferSizePolicy;
+import it.water.websocket.policy.MaxBinaryMessageSizePolicy;
 import it.water.websocket.policy.MaxBinaryMessageBufferSizePolicy;
+import it.water.websocket.policy.MaxTextMessageBufferSizePolicy;
 import it.water.websocket.policy.MaxTextMessageSizePolicy;
 import org.eclipse.jetty.websocket.api.RemoteEndpoint;
 import org.eclipse.jetty.websocket.api.Session;
@@ -156,6 +158,17 @@ class WebSocketServiceTest {
     }
 
     @Test
+    void activateWithInvalidThreadPropertiesFallsBackToDefaults() {
+        when(applicationProperties.getProperty("water.websocket.threads.open")).thenReturn("invalid");
+        when(applicationProperties.getProperty("water.websocket.threads.close")).thenReturn("invalid");
+        when(applicationProperties.getProperty("water.websocket.threads.message")).thenReturn("invalid");
+        when(applicationProperties.getProperty("water.websocket.threads.error")).thenReturn("invalid");
+
+        assertDoesNotThrow(() -> service.activate());
+        assertEquals("/ws", service.getWebSocketServiceUrl());
+    }
+
+    @Test
     void deactivateDisposesAllSessions() throws Exception {
         // Manually add a session to the static map
         WebSocketService.getSessions().put(mockSession, mockWebSocketSession);
@@ -174,6 +187,17 @@ class WebSocketServiceTest {
         service.onOpen(mockSession);
 
         assertFalse(WebSocketService.getSessions().isEmpty());
+        verify(mockWebSocketSession).initialize();
+    }
+
+    @Test
+    void onOpenMatchesEndpointWithoutLeadingSlash() {
+        when(mockEndPoint.getPath()).thenReturn("test");
+        when(componentRegistry.findComponents(eq(WebSocketEndPoint.class), any()))
+                .thenReturn(List.of(mockEndPoint));
+
+        service.onOpen(mockSession);
+
         verify(mockWebSocketSession).initialize();
     }
 
@@ -388,6 +412,38 @@ class WebSocketServiceTest {
         service.onOpen(mockSession);
 
         verify(jettyPolicy).setMaxTextMessageSize(32768);
+    }
+
+    @Test
+    void onOpenAppliesMaxBinaryMessageSizePolicy() {
+        MaxBinaryMessageSizePolicy policy = new MaxBinaryMessageSizePolicy(mockSession, 4096);
+        when(mockWebSocketSession.getWebScoketPolicies()).thenReturn(List.of(policy));
+        when(componentRegistry.findComponents(eq(WebSocketEndPoint.class), any()))
+                .thenReturn(List.of(mockEndPoint));
+
+        service.onOpen(mockSession);
+
+        verify(jettyPolicy).setMaxBinaryMessageSize(4096);
+    }
+
+    @Test
+    void onOpenAppliesMaxTextMessageBufferSizePolicy() {
+        MaxTextMessageBufferSizePolicy policy = new MaxTextMessageBufferSizePolicy(mockSession, 4096);
+        when(mockWebSocketSession.getWebScoketPolicies()).thenReturn(List.of(policy));
+        when(componentRegistry.findComponents(eq(WebSocketEndPoint.class), any()))
+                .thenReturn(List.of(mockEndPoint));
+
+        service.onOpen(mockSession);
+
+        verify(jettyPolicy).setMaxTextMessageBufferSize(4096);
+    }
+
+    @Test
+    void onOpenHandlesRegistryErrorsByNotThrowing() {
+        when(componentRegistry.findComponents(eq(WebSocketEndPoint.class), any()))
+                .thenThrow(new IllegalStateException("registry error"));
+
+        assertDoesNotThrow(() -> service.onOpen(mockSession));
     }
 
     @Test

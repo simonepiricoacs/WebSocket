@@ -253,6 +253,23 @@ class WebSocketMessageBrokerTest {
         verify(mockCompression).compress(any());
     }
 
+    @Test
+    void sendAsyncMessageSerializationFailureTriggersErrorMessageFallback() throws Exception {
+        WebSocketMessage msg = mock(WebSocketMessage.class);
+        when(msg.getTimestamp()).thenThrow(new IllegalStateException("serialize error"));
+
+        broker.sendAsync(msg);
+
+        verify(mockRemote, atLeastOnce()).sendString(anyString(), any());
+    }
+
+    @Test
+    void sendAsyncBytesSwallowsRemoteSendErrors() {
+        doThrow(new RuntimeException("send failure")).when(mockRemote).sendString(anyString(), isNull());
+
+        assertDoesNotThrow(() -> broker.sendAsync("hello".getBytes(StandardCharsets.UTF_8), true, null));
+    }
+
     // --- closeSessionWithMessage ---
 
     @Test
@@ -260,6 +277,24 @@ class WebSocketMessageBrokerTest {
         WebSocketMessage msg = WebSocketMessage.createMessage("CLOSE", "bye".getBytes(), WebSocketMessageType.OK);
         broker.closeSessionWithMessage(msg);
         verify(mockSession).close(eq(500), anyString());
+    }
+
+    @Test
+    void closeSessionWithMessageFallsBackToCloseWithoutReason() throws Exception {
+        WebSocketMessage msg = mock(WebSocketMessage.class);
+        when(msg.getTimestamp()).thenThrow(new IllegalStateException("cannot serialize"));
+
+        broker.closeSessionWithMessage(msg);
+
+        verify(mockSession).close();
+    }
+
+    @Test
+    void readRawReturnsNullWhenDecryptionFails() throws Exception {
+        when(mockEncryption.decrypt(any(), anyBoolean())).thenThrow(new IllegalStateException("decrypt failure"));
+        broker.setEncryptionPolicy(mockEncryption);
+
+        assertNull(broker.readRaw("hello".getBytes(StandardCharsets.UTF_8), false));
     }
 
     // --- updateEncryptionPolicyParams / getEncryptionPolicyParams ---

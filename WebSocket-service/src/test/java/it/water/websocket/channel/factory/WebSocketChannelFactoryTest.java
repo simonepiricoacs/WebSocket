@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,6 +23,14 @@ class WebSocketChannelFactoryTest {
 
     @Mock
     private WebSocketChannelClusterMessageBroker broker;
+
+    @Test
+    void constructorThrowsUnsupportedOperationException() throws Exception {
+        var constructor = WebSocketChannelFactory.class.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        var invocation = assertThrows(java.lang.reflect.InvocationTargetException.class, constructor::newInstance);
+        assertInstanceOf(UnsupportedOperationException.class, invocation.getCause());
+    }
 
     @Test
     void createChannelFromTypePlain() {
@@ -59,6 +68,15 @@ class WebSocketChannelFactoryTest {
         assertNotNull(result);
         assertInstanceOf(WebSocketBasicChannel.class, result);
         assertEquals("ch-4", result.getChannelId());
+    }
+
+    @Test
+    void createChannelFromClassPlainChannelWorks() throws Exception {
+        Map<String, Object> params = new HashMap<>();
+        WebSocketChannel result = WebSocketChannelFactory.createChannelFromClass(
+                WebSocketBasicChannel.class, "ch-5", "plain-class", 7, params, broker);
+        assertNotNull(result);
+        assertInstanceOf(WebSocketBasicChannel.class, result);
     }
 
     @Test

@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -166,5 +167,21 @@ class WebSocketChannelEncryptedSessionTest {
         session.authenticateAnonymous();
         session.initialize();
         verify(mockRemote, atLeastOnce()).sendString(anyString(), any());
+    }
+
+    @Test
+    void initializeSwallowsEncryptionMessageErrors() {
+        WebSocketChannelEncryptedSession session = new WebSocketChannelEncryptedSession(
+                mockSession, false, channelManager, mockRegistry) {
+            @Override protected String defineEncryptionMessage() {
+                throw new IllegalStateException("boom");
+            }
+
+            @Override protected Map<String, Object> defineEncryptionPolicyParams() {
+                return new HashMap<>();
+            }
+        };
+        session.authenticateAnonymous();
+        assertDoesNotThrow(session::initialize);
     }
 }

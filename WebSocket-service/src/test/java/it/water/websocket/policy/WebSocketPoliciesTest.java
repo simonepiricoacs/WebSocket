@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.Map;
 
@@ -77,16 +78,16 @@ class WebSocketPoliciesTest {
     }
 
     @Test
-    @SuppressWarnings("java:S2925") // Thread.sleep required to verify time-window reset in MaxMessagesPerSecondPolicy
-    void maxMessagesPerSecondPolicyResetsAfterTimeWindow() throws InterruptedException {
+    void maxMessagesPerSecondPolicyResetsAfterTimeWindow() throws Exception {
         MaxMessagesPerSecondPolicy policy = new MaxMessagesPerSecondPolicy(session, 2);
         policy.isSatisfied(Collections.emptyMap(), new byte[0]); // init
         policy.isSatisfied(Collections.emptyMap(), new byte[0]); // count=2
         policy.isSatisfied(Collections.emptyMap(), new byte[0]); // count=3 → fail
 
-        // Wait for time window to reset (>2 seconds — policy uses diff/1000 > 1 which requires >2s)
-        Thread.sleep(2100);
-        // After reset, should be satisfied again
+        Field startTimestampField = MaxMessagesPerSecondPolicy.class.getDeclaredField("startTimestamp");
+        startTimestampField.setAccessible(true);
+        startTimestampField.setLong(policy, System.currentTimeMillis() - 2100);
+
         assertTrue(policy.isSatisfied(Collections.emptyMap(), new byte[0]));
         assertEquals(1, policy.getCount());
     }
@@ -99,6 +100,17 @@ class WebSocketPoliciesTest {
         assertFalse(policy.sendWarningBackToClientOnFail());
     }
 
+    @Test
+    void maxMessagesPerSecondPolicyEqualityRequiresSameThreshold() {
+        MaxMessagesPerSecondPolicy policy = new MaxMessagesPerSecondPolicy(session, 5);
+        MaxMessagesPerSecondPolicy same = new MaxMessagesPerSecondPolicy(session, 5);
+        MaxMessagesPerSecondPolicy different = new MaxMessagesPerSecondPolicy(session, 6);
+
+        assertEquals(policy, same);
+        assertEquals(policy.hashCode(), same.hashCode());
+        assertNotEquals(policy, different);
+    }
+
     // ===================== MaxBinaryMessageBufferSizePolicy =====================
 
     @Test
@@ -107,6 +119,22 @@ class WebSocketPoliciesTest {
         Map<String, Object> params = Collections.emptyMap();
         assertTrue(policy.isSatisfied(params, new byte[512]));
         assertTrue(policy.isSatisfied(params, new byte[2048])); // limit is advisory via Jetty
+    }
+
+    @Test
+    void maxBinaryMessageBufferSizePolicyExposesFlagsAndEquality() {
+        MaxBinaryMessageBufferSizePolicy policy = new MaxBinaryMessageBufferSizePolicy(session, 1024);
+        MaxBinaryMessageBufferSizePolicy same = new MaxBinaryMessageBufferSizePolicy(session, 1024);
+        MaxBinaryMessageBufferSizePolicy different = new MaxBinaryMessageBufferSizePolicy(session, 2048);
+
+        assertEquals(1024, policy.getMaxBinaryMessageBufferSize());
+        assertFalse(policy.closeWebSocketOnFail());
+        assertFalse(policy.printWarningOnFail());
+        assertFalse(policy.sendWarningBackToClientOnFail());
+        assertFalse(policy.ignoreMessageOnFail());
+        assertEquals(policy, same);
+        assertEquals(policy.hashCode(), same.hashCode());
+        assertNotEquals(policy, different);
     }
 
     // ===================== MaxTextMessageSizePolicy =====================
@@ -134,12 +162,40 @@ class WebSocketPoliciesTest {
         assertFalse(policy.ignoreMessageOnFail());
     }
 
+    @Test
+    void maxTextMessageSizePolicyEqualityRequiresSameTypeAndSize() {
+        MaxTextMessageSizePolicy policy = new MaxTextMessageSizePolicy(session, 256);
+        MaxTextMessageSizePolicy same = new MaxTextMessageSizePolicy(session, 256);
+        MaxTextMessageSizePolicy different = new MaxTextMessageSizePolicy(session, 512);
+
+        assertEquals(policy, same);
+        assertEquals(policy.hashCode(), same.hashCode());
+        assertNotEquals(policy, different);
+        assertNotEquals(policy, new MaxPayloadBytesPolicy(session, 256));
+    }
+
     // ===================== MaxTextMessageBufferSizePolicy =====================
 
     @Test
     void maxTextMessageBufferSizePolicyAlwaysSatisfied() {
         MaxTextMessageBufferSizePolicy policy = new MaxTextMessageBufferSizePolicy(session, 1024);
         assertTrue(policy.isSatisfied(Collections.emptyMap(), new byte[512]));
+    }
+
+    @Test
+    void maxTextMessageBufferSizePolicyExposesFlagsAndEquality() {
+        MaxTextMessageBufferSizePolicy policy = new MaxTextMessageBufferSizePolicy(session, 1024);
+        MaxTextMessageBufferSizePolicy same = new MaxTextMessageBufferSizePolicy(session, 1024);
+        MaxTextMessageBufferSizePolicy different = new MaxTextMessageBufferSizePolicy(session, 2048);
+
+        assertEquals(1024, policy.getMaxTextMessageBufferSize());
+        assertFalse(policy.closeWebSocketOnFail());
+        assertFalse(policy.printWarningOnFail());
+        assertFalse(policy.sendWarningBackToClientOnFail());
+        assertFalse(policy.ignoreMessageOnFail());
+        assertEquals(policy, same);
+        assertEquals(policy.hashCode(), same.hashCode());
+        assertNotEquals(policy, different);
     }
 
     // ===================== MaxBinaryMessageSizePolicy =====================
@@ -157,6 +213,22 @@ class WebSocketPoliciesTest {
         assertTrue(policy.isSatisfied(Collections.emptyMap(), new byte[20]));
     }
 
+    @Test
+    void maxBinaryMessageSizePolicyExposesFlagsAndEquality() {
+        MaxBinaryMessageSizePolicy policy = new MaxBinaryMessageSizePolicy(session, 512);
+        MaxBinaryMessageSizePolicy same = new MaxBinaryMessageSizePolicy(session, 512);
+        MaxBinaryMessageSizePolicy different = new MaxBinaryMessageSizePolicy(session, 1024);
+
+        assertEquals(512, policy.getMaxBinaryMessageSize());
+        assertFalse(policy.closeWebSocketOnFail());
+        assertFalse(policy.printWarningOnFail());
+        assertFalse(policy.sendWarningBackToClientOnFail());
+        assertFalse(policy.ignoreMessageOnFail());
+        assertEquals(policy, same);
+        assertEquals(policy.hashCode(), same.hashCode());
+        assertNotEquals(policy, different);
+    }
+
     // ===================== InputBufferSizePolicy =====================
 
     @Test
@@ -164,6 +236,22 @@ class WebSocketPoliciesTest {
         InputBufferSizePolicy policy = new InputBufferSizePolicy(session, 4096);
         assertTrue(policy.isSatisfied(Collections.emptyMap(), new byte[0]));
         assertTrue(policy.isSatisfied(Collections.emptyMap(), new byte[8192]));
+    }
+
+    @Test
+    void inputBufferSizePolicyExposesFlagsAndEquality() {
+        InputBufferSizePolicy policy = new InputBufferSizePolicy(session, 4096);
+        InputBufferSizePolicy same = new InputBufferSizePolicy(session, 4096);
+        InputBufferSizePolicy different = new InputBufferSizePolicy(session, 8192);
+
+        assertEquals(4096, policy.getInputBufferSize());
+        assertFalse(policy.closeWebSocketOnFail());
+        assertFalse(policy.printWarningOnFail());
+        assertFalse(policy.sendWarningBackToClientOnFail());
+        assertFalse(policy.ignoreMessageOnFail());
+        assertEquals(policy, same);
+        assertEquals(policy.hashCode(), same.hashCode());
+        assertNotEquals(policy, different);
     }
 
     // ===================== WebSocketAbstractPolicy equals/hashCode =====================
@@ -193,5 +281,11 @@ class WebSocketPoliciesTest {
     void abstractPolicyNotEqualToDifferentType() {
         MaxPayloadBytesPolicy p = new MaxPayloadBytesPolicy(session, 100);
         assertNotEquals(p, "some-string");
+    }
+
+    @Test
+    void abstractPolicyNotEqualToNull() {
+        MaxPayloadBytesPolicy p = new MaxPayloadBytesPolicy(session, 100);
+        assertNotEquals(null, p);
     }
 }

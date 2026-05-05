@@ -376,14 +376,4 @@ public abstract class WebSocketAbstractSession implements WebSocketSession {
     protected void postAuthenticate(Session s) {
         //Do nothing
     }
-
-
-    @Override
-    public abstract void initialize();
-
-    /**
-     * @param message
-     */
-    @Override
-    public abstract void onMessage(String message);
 }

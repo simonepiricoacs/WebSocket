@@ -20,7 +20,6 @@ package it.water.websocket.policy;
 import it.water.websocket.api.WebSocketPolicy;
 import org.eclipse.jetty.websocket.api.Session;
 
-import java.util.Map;
 import java.util.Objects;
 
 public abstract class WebSocketAbstractPolicy implements WebSocketPolicy {
@@ -41,7 +40,4 @@ public abstract class WebSocketAbstractPolicy implements WebSocketPolicy {
     public int hashCode() {
         return Objects.hash(session);
     }
-
-    @Override
-    public abstract boolean isSatisfied(Map<String, Object> params, byte[] payload);
 }

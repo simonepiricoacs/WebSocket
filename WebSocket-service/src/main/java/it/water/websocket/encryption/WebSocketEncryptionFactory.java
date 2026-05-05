@@ -17,11 +17,11 @@
 
 package it.water.websocket.encryption;
 
-
+import it.water.core.api.security.EncryptionUtil;
 import it.water.websocket.encryption.mode.RSAWithAESEncryptionMode;
 
 /**
- * Factory for creating alla available Encryption Policies for websockets
+ * Factory for creating available Encryption Policies for websockets.
  */
 public class WebSocketEncryptionFactory {
     private WebSocketEncryptionFactory() {
@@ -29,10 +29,13 @@ public class WebSocketEncryptionFactory {
     }
 
     /**
-     * @return
+     * Creates an RSA+AES encryption policy backed by the given {@link EncryptionUtil}.
+     *
+     * @param encryptionUtil the Water crypto service (reads keystore from ApplicationProperties)
+     * @return a new WebSocketEncryption wrapping the RSA+AES mode
      */
-    public static WebSocketEncryption createRSAAndAESEncryptionPolicy() {
-        RSAWithAESEncryptionMode rsaAndAesMode = new RSAWithAESEncryptionMode();
+    public static WebSocketEncryption createRSAAndAESEncryptionPolicy(EncryptionUtil encryptionUtil) {
+        RSAWithAESEncryptionMode rsaAndAesMode = new RSAWithAESEncryptionMode(encryptionUtil);
         return new WebSocketEncryption(rsaAndAesMode);
     }
 }
